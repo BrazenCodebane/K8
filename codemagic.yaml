@@ -20,6 +20,20 @@ workflows:
         script: |
           npx cap add android
           npx cap sync android
+      - name: Lock to Landscape Orientation
+        script: |
+          python3 -c '
+          import xml.etree.ElementTree as ET
+          path = "android/app/src/main/AndroidManifest.xml"
+          ET.register_namespace("android", "http://schemas.android.com/apk/res/android")
+          tree = ET.parse(path)
+          root = tree.getroot()
+          app = root.find("application")
+          for act in app.findall("activity"):
+              if act.get("{http://schemas.android.com/apk/res/android}name") == ".MainActivity":
+                  act.set("{http://schemas.android.com/apk/res/android}screenOrientation", "landscape")
+          tree.write(path, encoding="utf-8", xml_declaration=True)
+          '
       - name: Fix Kotlin Stdlib Duplicate Classes
         script: |
           echo "" >> android/app/build.gradle
