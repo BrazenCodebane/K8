@@ -20,14 +20,13 @@
         h1 { font-size: 1.1rem; color: var(--accent-green); letter-spacing: 2px; text-transform: uppercase; }
         .status-badge { font-size: 0.8rem; padding: 2px 8px; border: 1px solid var(--border-color); background: #000; }
         .active { color: var(--accent-green); border-color: var(--accent-green); box-shadow: 0 0 8px var(--accent-dim); }
-        .main-container { display: grid; grid-template-columns: 1fr 320px; flex: 1; gap: 8px; padding: 8px; overflow: hidden; }
-        .panel { background: var(--panel-bg); border: 1px solid var(--border-color); display: flex; flex-direction: column; padding: 8px; border-radius: 4px; }
-        .panel-title { font-size: 0.85rem; font-weight: bold; color: var(--warning-amber); margin-bottom: 6px; text-transform: uppercase; border-bottom: 1px dashed var(--border-color); padding-bottom: 4px; }
+        .main-container { display: grid; grid-template-columns: 1fr 340px; flex: 1; gap: 8px; padding: 8px; overflow: hidden; }
+        .panel { background: var(--panel-bg); border: 1px solid var(--border-color); display: flex; flex-direction: column; padding: 8px; border-radius: 4px; overflow: hidden; }
+        .panel-title { font-size: 0.85rem; font-weight: bold; color: var(--warning-amber); margin-bottom: 6px; text-transform: uppercase; border-bottom: 1px dashed var(--border-color); padding-bottom: 4px; flex-shrink: 0; }
         
-        /* Fixed-size tactical log frame */
-        #terminal-log { 
-            height: 280px; 
-            flex: none; 
+        /* Main Traffic Log (Left Column) */
+        #traffic-log { 
+            flex: 1; 
             background: #050708; 
             border: 1px solid var(--border-color); 
             padding: 8px; 
@@ -36,37 +35,56 @@
             line-height: 1.3; 
             white-space: pre-wrap; 
             word-break: break-all; 
+            margin-bottom: 8px;
         }
 
-        .input-row { display: flex; gap: 8px; margin-top: 8px; }
+        /* Sub-Frame Info Log (Right Column) - Strictly limited height */
+        #info-log { 
+            height: 120px; 
+            max-height: 120px; 
+            flex: none; 
+            background: #050708; 
+            border: 1px solid var(--border-color); 
+            padding: 6px; 
+            overflow-y: auto; 
+            font-size: 0.75rem; 
+            line-height: 1.2; 
+            white-space: pre-wrap; 
+            word-break: break-all; 
+            margin-top: 4px;
+            color: #88aa88;
+        }
+
+        .input-row { display: flex; gap: 8px; flex-shrink: 0; }
         input[type="text"] { flex: 1; background: #050708; border: 1px solid var(--border-color); color: var(--accent-green); padding: 8px; font-size: 0.9rem; }
         button { background: #1a261c; border: 1px solid var(--accent-green); color: var(--accent-green); padding: 8px 16px; font-weight: bold; cursor: pointer; text-transform: uppercase; font-size: 0.8rem; }
         button:active { background: var(--accent-green); color: #000; }
-        .controls-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 8px; }
+        .controls-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 6px; flex-shrink: 0; }
         .metric-box { background: #050708; border: 1px solid var(--border-color); padding: 6px; text-align: center; }
         .metric-value { font-size: 1rem; color: var(--accent-green); font-weight: bold; }
         .metric-label { font-size: 0.7rem; color: #668866; }
-        #waterfall { width: 100%; height: 120px; background: #000; border: 1px solid var(--border-color); margin-top: 8px; }
+        #waterfall { width: 100%; height: 100px; background: #000; border: 1px solid var(--border-color); margin-top: 4px; flex-shrink: 0; }
     </style>
 </head>
 <body>
 
 <header>
-    <h1>K8-1 Kate // Tactical MFSK Terminal [Fixed Log + Auto Squelch]</h1>
+    <h1>K8-1 Kate // Tactical MFSK Terminal</h1>
     <div id="connection-status" class="status-badge">AUDIO OFFLINE</div>
 </header>
 
 <div class="main-container">
+    <!-- Left Column: Message Traffic Log & Input -->
     <div class="panel">
-        <div class="panel-title">Tactical Traffic Log</div>
-        <div id="terminal-log">[SYS] K8-1 Kate initialized. Standby for air-link...
-[SYS] Automatic carrier tracking and Hamming(7,4) packet parsing active.</div>
+        <div class="panel-title">Tactical Message Traffic</div>
+        <div id="traffic-log">[SYS] Terminal ready. Send or receive messages below.</div>
         <div class="input-row">
             <input type="text" id="tx-input" placeholder="Enter tactical message..." autocomplete="off">
             <button onclick="transmitMessage()">Transmit</button>
         </div>
     </div>
 
+    <!-- Right Column: Telemetry, Spectrum, and Sub-Frame Info Log -->
     <div class="panel">
         <div class="panel-title">Link Telemetry</div>
         <div class="controls-grid">
@@ -79,39 +97,46 @@
                 <div class="metric-label">FEC Mode</div>
             </div>
         </div>
-        <button onclick="initAudio()" style="width: 100%; margin-bottom: 8px;">Init Audio Engine</button>
-        <div class="panel-title" style="margin-top: 4px;">Spectrum Monitor</div>
+        <button onclick="initAudio()" style="width: 100%; margin-bottom: 4px; flex-shrink: 0;">Init Audio Engine</button>
+        <div class="panel-title" style="margin-top: 2px;">Spectrum Monitor</div>
         <canvas id="waterfall"></canvas>
+
+        <!-- Sub-Frame Info Log with strict height limit -->
+        <div class="panel-title" style="margin-top: 6px;">System Info & Squelch</div>
+        <div id="info-log">[SYS] Standby for link activity...</div>
     </div>
 </div>
 
 <script>
-    // --- MFSK & HAMMING CONFIGURATION ---
     const BASE_FREQ = 400;
     const CHANNEL_WIDTH = 300;
     const NUM_CHANNELS = 8;
-    const SYMBOL_DURATION = 0.15; // 150ms per symbol
-    const RAMP_TIME = 0.015;      // 15ms cosine envelope shaping
+    const SYMBOL_DURATION = 0.15;
+    const RAMP_TIME = 0.015;
 
     let audioCtx = null;
     let analyser = null;
     let micStream = null;
     let isListening = false;
 
-    // Automatic Receiver State Machine Variables
     let isReceiving = false;
     let symbolBuffer = [];
     let silenceFrames = 0;
-    const SILENCE_THRESHOLD_FRAMES = 15; // Quiet frames before closing packet
-    const SQUELCH_ENERGY_LIMIT = 110;    // Minimum FFT amplitude threshold
+    const SILENCE_THRESHOLD_FRAMES = 15;
+    const SQUELCH_ENERGY_LIMIT = 110;
 
-    function logMsg(txt) {
-        const log = document.getElementById('terminal-log');
+    function logTraffic(txt) {
+        const log = document.getElementById('traffic-log');
         log.textContent += "\n" + txt;
         log.scrollTop = log.scrollHeight;
     }
 
-    // --- HAMMING(7,4) ENCODER/DECODER ---
+    function logInfo(txt) {
+        const log = document.getElementById('info-log');
+        log.textContent += "\n" + txt;
+        log.scrollTop = log.scrollHeight;
+    }
+
     function encodeHamming74(nibble) {
         const d3 = (nibble >> 3) & 1;
         const d2 = (nibble >> 2) & 1;
@@ -155,7 +180,6 @@
                ((corrected >> 3) & 1);
     }
 
-    // --- AUDIO INITIALIZATION ---
     async function initAudio() {
         try {
             audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -174,15 +198,14 @@
 
             document.getElementById('connection-status').textContent = 'AUDIO ACTIVE';
             document.getElementById('connection-status').classList.add('active');
-            logMsg("[SYS] Audio hardware initialized. Automatic carrier squelch engaged.");
+            logInfo("[SYS] Audio active. Squelch engaged.");
             
             startReceiverLoop();
         } catch (err) {
-            logMsg("[ERR] Audio init failed: " + err.message);
+            logInfo("[ERR] Audio init failed: " + err.message);
         }
     }
 
-    // --- TRANSMITTER ENGINE ---
     async function transmitMessage() {
         if (!audioCtx) {
             alert("Initialize audio engine first!");
@@ -191,7 +214,8 @@
         const text = document.getElementById('tx-input').value;
         if (!text) return;
         document.getElementById('tx-input').value = '';
-        logMsg("[TX] Sending: " + text);
+        
+        logTraffic("[TX] " + text);
 
         let symbols = [];
         for (let i = 0; i < text.length; i++) {
@@ -231,7 +255,6 @@
         });
     }
 
-    // --- AUTOMATIC RECEIVER SQUELCH LOOP ---
     function startReceiverLoop() {
         if (isListening) return;
         isListening = true;
@@ -266,13 +289,12 @@
                 canvasCtx.fillRect(i * barWidth, canvas.height - (val / 255) * canvas.height, barWidth - 2, (val / 255) * canvas.height);
             }
 
-            // Squelch state machine tracking
             if (!isReceiving) {
                 if (maxBinVal > SQUELCH_ENERGY_LIMIT) {
                     isReceiving = true;
                     symbolBuffer = [];
                     silenceFrames = 0;
-                    logMsg("[RX] Squelch Open. Signal detected on Sub-CH " + dominantChannel);
+                    logInfo("[RX] Squelch Open (CH " + dominantChannel + ")");
                 }
             } else {
                 if (maxBinVal > SQUELCH_ENERGY_LIMIT) {
@@ -282,7 +304,7 @@
                     silenceFrames++;
                     if (silenceFrames > SILENCE_THRESHOLD_FRAMES) {
                         isReceiving = false;
-                        logMsg("[RX] Carrier dropped. Squelch Closed.");
+                        logInfo("[RX] Squelch Closed.");
                         processPacketBuffer(symbolBuffer);
                         symbolBuffer = [];
                     }
@@ -292,14 +314,13 @@
         loop();
     }
 
-    // --- PACKET UNPACKING & DECODER ---
     function processPacketBuffer(symbols) {
         if (symbols.length < 6) {
-            logMsg("[ERR] Packet too short or corrupted.");
+            logInfo("[ERR] Packet too short (" + symbols.length + " sym).");
             return;
         }
 
-        logMsg("[RX] Captured " + symbols.length + " symbols. Reconstructing payload...");
+        logInfo("[RX] Parsing " + symbols.length + " symbols...");
         let decodedBytes = [];
 
         for (let i = 0; i <= symbols.length - 6; i += 6) {
@@ -320,7 +341,7 @@
         }
 
         let decodedMessage = String.fromCharCode.apply(null, decodedBytes);
-        logMsg("[RX TEXT] " + decodedMessage);
+        logTraffic("[RX] " + decodedMessage);
     }
 </script>
 </html>
