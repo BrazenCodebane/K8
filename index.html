@@ -3,23 +3,47 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>K8-1 Kate - Tactical ITA2/MFSK Terminal</title>
+    <title>K8-1 Kate - Tactical MFSK Terminal</title>
     <style>
         :root {
             --bg-color: #0b0f12;
             --panel-bg: #13181d;
+            --log-bg: #050708;
             --accent-green: #00ff66;
             --accent-dim: #00441a;
             --text-main: #c0d0c0;
             --border-color: #1f2e22;
             --warning-amber: #ffaa00;
+            --btn-bg: #1a261c;
+            --info-text: #88aa88;
         }
+
+        /* Light Mode Tactical Palette */
+        [data-theme="light"] {
+            --bg-color: #e4e8e4;
+            --panel-bg: #d2dad2;
+            --log-bg: #f5f8f5;
+            --accent-green: #007a33;
+            --accent-dim: #99d6b0;
+            --text-main: #112211;
+            --border-color: #88a088;
+            --warning-amber: #b36b00;
+            --btn-bg: #c0d0c0;
+            --info-text: #225522;
+        }
+
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Courier New', Courier, monospace; }
-        body { background-color: var(--bg-color); color: var(--text-main); height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+        body { background-color: var(--bg-color); color: var(--text-main); height: 100vh; display: flex; flex-direction: column; overflow: hidden; transition: background-color 0.2s, color 0.2s; }
         header { background: var(--panel-bg); border-bottom: 2px solid var(--border-color); padding: 8px 16px; display: flex; justify-content: space-between; align-items: center; }
         h1 { font-size: 1.1rem; color: var(--accent-green); letter-spacing: 2px; text-transform: uppercase; }
-        .status-badge { font-size: 0.8rem; padding: 2px 8px; border: 1px solid var(--border-color); background: #000; }
+        
+        .header-controls { display: flex; align-items: center; gap: 10px; }
+        .theme-toggle-btn { background: var(--btn-bg); border: 1px solid var(--border-color); color: var(--text-main); padding: 2px 8px; font-size: 0.75rem; cursor: pointer; text-transform: uppercase; font-weight: bold; }
+        .theme-toggle-btn:hover { border-color: var(--accent-green); }
+
+        .status-badge { font-size: 0.8rem; padding: 2px 8px; border: 1px solid var(--border-color); background: var(--log-bg); }
         .active { color: var(--accent-green); border-color: var(--accent-green); box-shadow: 0 0 8px var(--accent-dim); }
+        
         .main-container { display: grid; grid-template-columns: 1fr 340px; flex: 1; gap: 8px; padding: 8px; overflow: hidden; }
         .panel { background: var(--panel-bg); border: 1px solid var(--border-color); display: flex; flex-direction: column; padding: 8px; border-radius: 4px; overflow: hidden; }
         .panel-title { font-size: 0.85rem; font-weight: bold; color: var(--warning-amber); margin-bottom: 6px; text-transform: uppercase; border-bottom: 1px dashed var(--border-color); padding-bottom: 4px; flex-shrink: 0; }
@@ -27,7 +51,7 @@
         /* Main Traffic Log (Left Column) */
         #traffic-log { 
             flex: 1; 
-            background: #050708; 
+            background: var(--log-bg); 
             border: 1px solid var(--border-color); 
             padding: 8px; 
             overflow-y: auto; 
@@ -36,6 +60,7 @@
             white-space: pre-wrap; 
             word-break: break-all; 
             margin-bottom: 8px;
+            color: var(--text-main);
         }
 
         /* Sub-Frame Info Log (Right Column) - Strictly limited height */
@@ -43,7 +68,7 @@
             height: 120px; 
             max-height: 120px; 
             flex: none; 
-            background: #050708; 
+            background: var(--log-bg); 
             border: 1px solid var(--border-color); 
             padding: 6px; 
             overflow-y: auto; 
@@ -52,32 +77,36 @@
             white-space: pre-wrap; 
             word-break: break-all; 
             margin-top: 4px;
-            color: #88aa88;
+            color: var(--info-text);
         }
 
         .input-row { display: flex; gap: 8px; flex-shrink: 0; }
-        input[type="text"] { flex: 1; background: #050708; border: 1px solid var(--border-color); color: var(--accent-green); padding: 8px; font-size: 0.9rem; text-transform: uppercase; }
-        button { background: #1a261c; border: 1px solid var(--accent-green); color: var(--accent-green); padding: 8px 16px; font-weight: bold; cursor: pointer; text-transform: uppercase; font-size: 0.8rem; }
+        input[type="text"] { flex: 1; background: var(--log-bg); border: 1px solid var(--border-color); color: var(--accent-green); padding: 8px; font-size: 0.9rem; text-transform: uppercase; }
+        button { background: var(--btn-bg); border: 1px solid var(--accent-green); color: var(--accent-green); padding: 8px 16px; font-weight: bold; cursor: pointer; text-transform: uppercase; font-size: 0.8rem; }
         button:active { background: var(--accent-green); color: #000; }
+        
         .controls-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 6px; flex-shrink: 0; }
-        .metric-box { background: #050708; border: 1px solid var(--border-color); padding: 6px; text-align: center; }
+        .metric-box { background: var(--log-bg); border: 1px solid var(--border-color); padding: 6px; text-align: center; }
         .metric-value { font-size: 1rem; color: var(--accent-green); font-weight: bold; }
-        .metric-label { font-size: 0.7rem; color: #668866; }
-        #waterfall { width: 100%; height: 100px; background: #000; border: 1px solid var(--border-color); margin-top: 4px; flex-shrink: 0; }
+        .metric-label { font-size: 0.7rem; color: var(--info-text); }
+        #waterfall { width: 100%; height: 100px; background: var(--log-bg); border: 1px solid var(--border-color); margin-top: 4px; flex-shrink: 0; }
     </style>
 </head>
 <body>
 
 <header>
-    <h1>K8-1 Kate // Tactical ITA2 Terminal [LBT + Baudot]</h1>
-    <div id="connection-status" class="status-badge">AUDIO OFFLINE</div>
+    <h1>K8-1 Kate // Tactical MFSK Terminal</h1>
+    <div class="header-controls">
+        <button id="theme-toggle" class="theme-toggle-btn" onclick="toggleTheme()">[ ☀ LIGHT ]</button>
+        <div id="connection-status" class="status-badge">AUDIO OFFLINE</div>
+    </div>
 </header>
 
 <div class="main-container">
     <!-- Left Column: Message Traffic Log & Input -->
     <div class="panel">
         <div class="panel-title">Tactical Message Traffic (ITA2)</div>
-        <div id="traffic-log">[SYS] Terminal initialized. ITA2 5-bit codec active.</div>
+        <div id="traffic-log">[SYS] Terminal ready. 500-2500 Hz FM passband active.</div>
         <div class="input-row">
             <input type="text" id="tx-input" placeholder="Enter tactical message..." autocomplete="off">
             <button onclick="transmitMessage()">Transmit</button>
@@ -108,8 +137,32 @@
 </div>
 
 <script>
-    const BASE_FREQ = 400;
-    const CHANNEL_WIDTH = 300;
+    // Theme Management
+    function toggleTheme() {
+        const currentTheme = document.body.getAttribute('data-theme');
+        const newTheme = currentTheme === 'light' ? 'dark' : 'light';
+        applyTheme(newTheme);
+    }
+
+    function applyTheme(theme) {
+        if (theme === 'light') {
+            document.body.setAttribute('data-theme', 'light');
+            document.getElementById('theme-toggle').textContent = '[ 🌙 DARK ]';
+            localStorage.setItem('k81_theme', 'light');
+        } else {
+            document.body.removeAttribute('data-theme');
+            document.getElementById('theme-toggle').textContent = '[ ☀ LIGHT ]';
+            localStorage.setItem('k81_theme', 'dark');
+        }
+    }
+
+    // Load persisted theme on start
+    const savedTheme = localStorage.getItem('k81_theme');
+    if (savedTheme === 'light') applyTheme('light');
+
+    // Optimized for FM Repeater Audio Passband (500 Hz to 2500 Hz)
+    const BASE_FREQ = 500;
+    const CHANNEL_WIDTH = 250;
     const NUM_CHANNELS = 8;
     const SYMBOL_DURATION = 0.15;
     const RAMP_TIME = 0.015;
@@ -119,6 +172,7 @@
     let micStream = null;
     let isListening = false;
 
+    // Squelch & LBT Variables
     let isReceiving = false;
     let symbolBuffer = [];
     let silenceFrames = 0;
@@ -143,7 +197,6 @@
         24: '9', 25: '?', 26: '&', 27: 'FIGS', 28: '.', 29: '/', 30: ';', 31: 'LTRS'
     };
 
-    // Reverse lookup maps for encoding
     const LTRS_REV = {};
     const FIGS_REV = {};
     for (let k in ITA2_LTRS) if (ITA2_LTRS[k].length === 1) LTRS_REV[ITA2_LTRS[k]] = parseInt(k);
@@ -161,7 +214,6 @@
         log.scrollTop = log.scrollHeight;
     }
 
-    // Encode string to array of 5-bit ITA2 codes (handling LTRS/FIGS shifts)
     function encodeITA2(str) {
         let codes = [];
         let currentMode = 'LTRS';
@@ -171,13 +223,13 @@
             let char = str[i];
             if (LTRS_REV[char] !== undefined) {
                 if (currentMode !== 'LTRS') {
-                    codes.push(31); // LTRS shift code
+                    codes.push(31);
                     currentMode = 'LTRS';
                 }
                 codes.push(LTRS_REV[char]);
             } else if (FIGS_REV[char] !== undefined) {
                 if (currentMode !== 'FIGS') {
-                    codes.push(27); // FIGS shift code
+                    codes.push(27);
                     currentMode = 'FIGS';
                 }
                 codes.push(FIGS_REV[char]);
@@ -186,7 +238,6 @@
         return codes;
     }
 
-    // Decode array of 5-bit ITA2 codes back to string
     function decodeITA2(codes) {
         let out = '';
         let mode = 'LTRS';
@@ -223,7 +274,7 @@
 
             document.getElementById('connection-status').textContent = 'AUDIO ACTIVE';
             document.getElementById('connection-status').classList.add('active');
-            logInfo("[SYS] Audio active. ITA2 receiver engaged.");
+            logInfo("[SYS] Audio initialized. Dynamic LBT active.");
             
             startReceiverLoop();
         } catch (err) {
@@ -238,7 +289,7 @@
             if (now - channelLastHeard[currentWorkingChannel] > 5000) {
                 return currentWorkingChannel;
             }
-            logInfo(`[LBT] Channel ${currentWorkingChannel} busy. Shifting...`);
+            logInfo(`[LBT] Channel ${currentWorkingChannel} busy (<5s). Rotating to chan+1...`);
             currentWorkingChannel = (currentWorkingChannel + 1) % NUM_CHANNELS;
             attempts++;
         }
@@ -255,16 +306,15 @@
         document.getElementById('tx-input').value = '';
 
         let activeTxBaseChannel = getNextClearChannel();
-        logInfo(`[TX] Base Channel: CH ${activeTxBaseChannel}`);
+        logInfo(`[TX] Active Base Channel: CH ${activeTxBaseChannel}`);
         logTraffic("[TX] " + text.toUpperCase());
 
         let ita2Codes = encodeITA2(text);
         let symbols = [];
 
-        // Pack each 5-bit ITA2 code into two 3-bit MFSK symbols
         ita2Codes.forEach(code => {
-            let sym1 = (code >> 2) & 0x07; // Upper 3 bits
-            let sym2 = code & 0x03;        // Lower 2 bits
+            let sym1 = (code >> 2) & 0x07;
+            let sym2 = code & 0x03;
             symbols.push((sym1 + activeTxBaseChannel) % NUM_CHANNELS);
             symbols.push((sym2 + activeTxBaseChannel) % NUM_CHANNELS);
         });
@@ -308,7 +358,8 @@
             requestAnimationFrame(loop);
             analyser.getByteFrequencyData(dataArray);
 
-            canvasCtx.fillStyle = '#000';
+            const isLight = document.body.getAttribute('data-theme') === 'light';
+            canvasCtx.fillStyle = isLight ? '#f5f8f5' : '#000000';
             canvasCtx.fillRect(0, 0, canvas.width, canvas.height);
             let barWidth = canvas.width / NUM_CHANNELS;
             
@@ -327,7 +378,11 @@
                     dominantChannel = i;
                 }
                 
-                canvasCtx.fillStyle = val > 120 ? '#00ff66' : '#113311';
+                if (val > 120) {
+                    canvasCtx.fillStyle = isLight ? '#007a33' : '#00ff66';
+                } else {
+                    canvasCtx.fillStyle = isLight ? '#c0d0c0' : '#113311';
+                }
                 canvasCtx.fillRect(i * barWidth, canvas.height - (val / 255) * canvas.height, barWidth - 2, (val / 255) * canvas.height);
             }
 
