@@ -23,7 +23,21 @@
         .main-container { display: grid; grid-template-columns: 1fr 320px; flex: 1; gap: 8px; padding: 8px; overflow: hidden; }
         .panel { background: var(--panel-bg); border: 1px solid var(--border-color); display: flex; flex-direction: column; padding: 8px; border-radius: 4px; }
         .panel-title { font-size: 0.85rem; font-weight: bold; color: var(--warning-amber); margin-bottom: 6px; text-transform: uppercase; border-bottom: 1px dashed var(--border-color); padding-bottom: 4px; }
-        #terminal-log { flex: 1; background: #050708; border: 1px solid var(--border-color); padding: 8px; overflow-y: auto; font-size: 0.85rem; line-height: 1.3; white-space: pre-wrap; word-break: break-all; }
+        
+        /* Fixed-size tactical log frame */
+        #terminal-log { 
+            height: 280px; 
+            flex: none; 
+            background: #050708; 
+            border: 1px solid var(--border-color); 
+            padding: 8px; 
+            overflow-y: auto; 
+            font-size: 0.85rem; 
+            line-height: 1.3; 
+            white-space: pre-wrap; 
+            word-break: break-all; 
+        }
+
         .input-row { display: flex; gap: 8px; margin-top: 8px; }
         input[type="text"] { flex: 1; background: #050708; border: 1px solid var(--border-color); color: var(--accent-green); padding: 8px; font-size: 0.9rem; }
         button { background: #1a261c; border: 1px solid var(--accent-green); color: var(--accent-green); padding: 8px 16px; font-weight: bold; cursor: pointer; text-transform: uppercase; font-size: 0.8rem; }
@@ -38,7 +52,7 @@
 <body>
 
 <header>
-    <h1>K8-1 Kate // Tactical MFSK Terminal [Full Auto + H(7,4)]</h1>
+    <h1>K8-1 Kate // Tactical MFSK Terminal [Fixed Log + Auto Squelch]</h1>
     <div id="connection-status" class="status-badge">AUDIO OFFLINE</div>
 </header>
 
@@ -258,7 +272,7 @@
                     isReceiving = true;
                     symbolBuffer = [];
                     silenceFrames = 0;
-                    logMsg("[RX] Squelch Open. " + dominantChannel);
+                    logMsg("[RX] Squelch Open. Signal detected on Sub-CH " + dominantChannel);
                 }
             } else {
                 if (maxBinVal > SQUELCH_ENERGY_LIMIT) {
