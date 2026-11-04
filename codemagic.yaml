@@ -20,6 +20,20 @@ workflows:
         script: |
           npx cap add android
           npx cap sync android
+      - name: Inject RECORD_AUDIO Permission
+        script: |
+          python3 -c '
+          import xml.etree.ElementTree as ET
+          path = "android/app/src/main/AndroidManifest.xml"
+          ET.register_namespace("android", "http://schemas.android.com/apk/res/android")
+          tree = ET.parse(path)
+          root = tree.getroot()
+          perm_name = "{http://schemas.android.com/apk/res/android}name"
+          if root.find(f"uses-permission[@{perm_name}=\"android.permission.RECORD_AUDIO\"]") is None:
+              perm = ET.Element("{http://schemas.android.com/apk/res/android}uses-permission", {perm_name: "android.permission.RECORD_AUDIO"})
+              root.insert(0, perm)
+              tree.write(path, encoding="utf-8", xml_declaration=True)
+          '
       - name: Lock to Landscape Orientation
         script: |
           python3 -c '
