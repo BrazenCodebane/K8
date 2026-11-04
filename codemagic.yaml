@@ -52,6 +52,28 @@ workflows:
                   act.set("{http://schemas.android.com/apk/res/android}screenOrientation", "landscape")
           tree.write(path, encoding="utf-8", xml_declaration=True)
           '
+      - name: Force Unified Kotlin Version
+        script: |
+          python3 -c '
+          build_gradle = "android/app/build.gradle"
+          with open(build_gradle, "r") as f:
+              content = f.read()
+          
+          resolution_block = """
+          configurations.all {
+              resolutionStrategy.eachDependency { details ->
+                  if (details.requested.group == "org.jetbrains.kotlin") {
+                      details.useVersion "1.8.22"
+                  }
+              }
+          }
+          """
+          
+          if "resolutionStrategy" not in content:
+              content += resolution_block
+              with open(build_gradle, "w") as f:
+                  f.write(content)
+          '
       - name: Set Android SDK location
         script: |
           echo "sdk.dir=$ANDROID_SDK_ROOT" > "$CM_BUILD_DIR/android/local.properties"
