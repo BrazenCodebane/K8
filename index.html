@@ -2,418 +2,311 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>K8-1 Kate - Tactical MFSK Terminal</title>
     <style>
         :root {
-            --bg-color: #0b0e14;
-            --panel-bg: #131722;
-            --border-color: #2a2e3d;
+            --bg-color: #0b0f12;
+            --panel-bg: #13181d;
             --accent-green: #00ff66;
-            --accent-blue: #00bfff;
-            --accent-yellow: #ffcc00;
-            --text-color: #d1d5db;
-            --font-mono: 'Courier New', Courier, monospace;
+            --accent-dim: #00441a;
+            --text-main: #c0d0c0;
+            --border-color: #1f2e22;
+            --warning-amber: #ffaa00;
         }
-
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-
-        body {
-            background-color: var(--bg-color);
-            color: var(--text-color);
-            font-family: var(--font-mono);
-            display: flex;
-            flex-direction: column;
-            height: 100vh;
-            overflow: hidden;
-        }
-
-        header {
-            background: var(--panel-bg);
-            border-bottom: 1px solid var(--border-color);
-            padding: 10px 15px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        .brand { font-weight: bold; font-size: 1.1rem; color: var(--accent-green); }
-
-        main {
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-            padding: 10px;
-            overflow: hidden;
-        }
-
-        /* 8-Channel Matrix Grid */
-        .channel-matrix {
-            display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            gap: 6px;
-        }
-
-        .ch-card {
-            background: var(--panel-bg);
-            border: 1px solid var(--border-color);
-            border-radius: 4px;
-            padding: 6px;
-            font-size: 0.75rem;
-            display: flex;
-            flex-direction: column;
-            gap: 4px;
-        }
-
-        .ch-header { display: flex; justify-content: space-between; }
-        .ch-meter-bg { background: #1f2430; height: 6px; border-radius: 2px; overflow: hidden; }
-        .ch-meter-fill { background: var(--accent-green); height: 100%; width: 0%; transition: width 0.1s; }
-
-        /* Terminal Chat Log */
-        .chat-log {
-            flex: 1;
-            background: #06080c;
-            border: 1px solid var(--border-color);
-            border-radius: 4px;
-            padding: 10px;
-            overflow-y: auto;
-            font-size: 0.9rem;
-            line-height: 1.4;
-        }
-
-        .msg { margin-bottom: 6px; word-break: break-word; }
-        .msg-rx { color: var(--accent-green); }
-        .msg-tx { color: var(--accent-blue); }
-        .msg-sys { color: var(--accent-yellow); }
-
-        /* Controls */
-        .control-panel {
-            background: var(--panel-bg);
-            border: 1px solid var(--border-color);
-            border-radius: 4px;
-            padding: 10px;
-            display: flex;
-            gap: 8px;
-            align-items: center;
-        }
-
-        select {
-            background: #06080c;
-            border: 1px solid var(--border-color);
-            color: var(--accent-yellow);
-            padding: 10px;
-            font-family: var(--font-mono);
-            border-radius: 4px;
-        }
-
-        input[type="text"] {
-            flex: 1;
-            background: #06080c;
-            border: 1px solid var(--border-color);
-            color: var(--text-color);
-            padding: 10px;
-            font-family: var(--font-mono);
-            border-radius: 4px;
-        }
-
-        button {
-            background: #1f2430;
-            color: var(--accent-green);
-            border: 1px solid var(--accent-green);
-            padding: 0 16px;
-            border-radius: 4px;
-            font-family: var(--font-mono);
-            font-weight: bold;
-            cursor: pointer;
-        }
-
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Courier New', Courier, monospace; }
+        body { background-color: var(--bg-color); color: var(--text-main); height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+        header { background: var(--panel-bg); border-bottom: 2px solid var(--border-color); padding: 8px 16px; display: flex; justify-content: space-between; align-items: center; }
+        h1 { font-size: 1.1rem; color: var(--accent-green); letter-spacing: 2px; text-transform: uppercase; }
+        .status-badge { font-size: 0.8rem; padding: 2px 8px; border: 1px solid var(--border-color); background: #000; }
+        .active { color: var(--accent-green); border-color: var(--accent-green); box-shadow: 0 0 8px var(--accent-dim); }
+        .main-container { display: grid; grid-template-columns: 1fr 320px; flex: 1; gap: 8px; padding: 8px; overflow: hidden; }
+        .panel { background: var(--panel-bg); border: 1px solid var(--border-color); display: flex; flex-direction: column; padding: 8px; border-radius: 4px; }
+        .panel-title { font-size: 0.85rem; font-weight: bold; color: var(--warning-amber); margin-bottom: 6px; text-transform: uppercase; border-bottom: 1px dashed var(--border-color); padding-bottom: 4px; }
+        #terminal-log { flex: 1; background: #050708; border: 1px solid var(--border-color); padding: 8px; overflow-y: auto; font-size: 0.85rem; line-height: 1.3; white-space: pre-wrap; word-break: break-all; }
+        .input-row { display: flex; gap: 8px; margin-top: 8px; }
+        input[type="text"] { flex: 1; background: #050708; border: 1px solid var(--border-color); color: var(--accent-green); padding: 8px; font-size: 0.9rem; }
+        button { background: #1a261c; border: 1px solid var(--accent-green); color: var(--accent-green); padding: 8px 16px; font-weight: bold; cursor: pointer; text-transform: uppercase; font-size: 0.8rem; }
         button:active { background: var(--accent-green); color: #000; }
+        .controls-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 8px; }
+        .metric-box { background: #050708; border: 1px solid var(--border-color); padding: 6px; text-align: center; }
+        .metric-value { font-size: 1rem; color: var(--accent-green); font-weight: bold; }
+        .metric-label { font-size: 0.7rem; color: #668866; }
+        #waterfall { width: 100%; height: 120px; background: #000; border: 1px solid var(--border-color); margin-top: 8px; }
     </style>
 </head>
 <body>
 
-    <header>
-        <div class="brand">K8-1 "KATE" // MFSK ENCODER/DECODER (2x REPETITION)</div>
-        <div id="status-tag" style="color: var(--accent-yellow); font-size: 0.8rem;">INIT REQUIRED</div>
-    </header>
+<header>
+    <h1>K8-1 Kate // Tactical MFSK Terminal [Full Auto + H(7,4)]</h1>
+    <div id="connection-status" class="status-badge">AUDIO OFFLINE</div>
+</header>
 
-    <main>
-        <!-- 8-Channel Matrix -->
-        <div class="channel-matrix" id="matrix"></div>
-
-        <!-- Terminal Chat Log -->
-        <div class="chat-log" id="chatLog"></div>
-
-        <!-- Transmit Panel -->
-        <div class="control-panel">
-            <select id="txDuration" title="Transmission Duration">
-                <option value="1">1 sec</option>
-                <option value="3">3 sec</option>
-                <option value="5" selected>5 sec</option>
-                <option value="10">10 sec</option>
-                <option value="15">15 sec</option>
-            </select>
-            <input type="text" id="msgInput" placeholder="Initialize Audio to Start..." disabled>
-            <button id="txBtn" onclick="handleTxOrInit()">INIT AUDIO</button>
+<div class="main-container">
+    <div class="panel">
+        <div class="panel-title">Tactical Traffic Log</div>
+        <div id="terminal-log">[SYS] K8-1 Kate initialized. Standby for air-link...
+[SYS] Automatic carrier tracking and Hamming(7,4) packet parsing active.</div>
+        <div class="input-row">
+            <input type="text" id="tx-input" placeholder="Enter tactical message..." autocomplete="off">
+            <button onclick="transmitMessage()">Transmit</button>
         </div>
-    </main>
+    </div>
 
-    <script>
-        const NUM_CHANNELS = 8;
-        const BASE_FREQ = 400;
-        const CHANNEL_WIDTH = 300;
-        const SQUELCH_THRESHOLD = 30; 
-        const SYMBOL_DURATION = 0.08; // 80ms per symbol slot
-        const REPETITION_FACTOR = 2;   // Send each symbol 2x for redundancy
-        
-        let audioCtx = null;
-        let analyser = null;
-        let micStream = null;
-        let isTransmitting = false;
-        let isInitialized = false;
+    <div class="panel">
+        <div class="panel-title">Link Telemetry</div>
+        <div class="controls-grid">
+            <div class="metric-box">
+                <div id="m-baud" class="metric-value">6.6</div>
+                <div class="metric-label">Baud Rate</div>
+            </div>
+            <div class="metric-box">
+                <div id="m-mode" class="metric-value">H(7,4)</div>
+                <div class="metric-label">FEC Mode</div>
+            </div>
+        </div>
+        <button onclick="initAudio()" style="width: 100%; margin-bottom: 8px;">Init Audio Engine</button>
+        <div class="panel-title" style="margin-top: 4px;">Spectrum Monitor</div>
+        <canvas id="waterfall"></canvas>
+    </div>
+</div>
 
-        // RX Decoder State
-        let isReceiving = false;
-        let rxRawSymbols = [];
-        let lastCapturedSymbol = -1;
-        let symbolCaptureTimer = 0;
+<script>
+    // --- MFSK & HAMMING CONFIGURATION ---
+    const BASE_FREQ = 400;
+    const CHANNEL_WIDTH = 300;
+    const NUM_CHANNELS = 8;
+    const SYMBOL_DURATION = 0.15; // 150ms per symbol
+    const RAMP_TIME = 0.015;      // 15ms cosine envelope shaping
 
-        // Render Matrix UI
-        const matrixEl = document.getElementById('matrix');
-        for (let i = 0; i < NUM_CHANNELS; i++) {
-            const centerFreq = BASE_FREQ + (i * CHANNEL_WIDTH) + (CHANNEL_WIDTH / 2);
-            matrixEl.innerHTML += `
-                <div class="ch-card" id="chCard-${i}">
-                    <div class="ch-header">
-                        <span>CH ${i}</span>
-                        <span>${centerFreq}Hz</span>
-                    </div>
-                    <div class="ch-meter-bg">
-                        <div class="ch-meter-fill" id="meter-${i}"></div>
-                    </div>
-                </div>
-            `;
-        }
+    let audioCtx = null;
+    let analyser = null;
+    let micStream = null;
+    let isListening = false;
 
-        async function handleTxOrInit() {
-            if (!isInitialized) {
-                const ok = await initLiveAudio();
-                if (ok) {
-                    isInitialized = true;
-                    document.getElementById('status-tag').innerText = "RX DECODER ACTIVE (2x FEC)";
-                    document.getElementById('status-tag').style.color = "var(--accent-green)";
-                    document.getElementById('msgInput').disabled = false;
-                    document.getElementById('msgInput').placeholder = "Type message to encode & transmit...";
-                    document.getElementById('txBtn').innerText = "TRANSMIT";
-                }
-                return;
+    // Automatic Receiver State Machine Variables
+    let isReceiving = false;
+    let symbolBuffer = [];
+    let silenceFrames = 0;
+    const SILENCE_THRESHOLD_FRAMES = 15; // Quiet frames before closing packet
+    const SQUELCH_ENERGY_LIMIT = 110;    // Minimum FFT amplitude threshold
+
+    function logMsg(txt) {
+        const log = document.getElementById('terminal-log');
+        log.textContent += "\n" + txt;
+        log.scrollTop = log.scrollHeight;
+    }
+
+    // --- HAMMING(7,4) ENCODER/DECODER ---
+    function encodeHamming74(nibble) {
+        const d3 = (nibble >> 3) & 1;
+        const d2 = (nibble >> 2) & 1;
+        const d1 = (nibble >> 1) & 1;
+        const d0 = nibble & 1;
+
+        const p2 = d3 ^ d2 ^ d1;
+        const p1 = d3 ^ d2 ^ d0;
+        const p0 = d3 ^ d1 ^ d0;
+
+        return (d3 << 6) | (d2 << 5) | (d1 << 4) | (d0 << 3) | (p2 << 2) | (p1 << 1) | p0;
+    }
+
+    function decodeHamming74(received) {
+        const d3 = (received >> 6) & 1;
+        const d2 = (received >> 5) & 1;
+        const d1 = (received >> 4) & 1;
+        const d0 = (received >> 3) & 1;
+        const p2 = (received >> 2) & 1;
+        const p1 = (received >> 1) & 1;
+        const p0 = received & 1;
+
+        const s2 = p2 ^ d3 ^ d2 ^ d1;
+        const s1 = p1 ^ d3 ^ d2 ^ d0;
+        const s0 = p0 ^ d3 ^ d1 ^ d0;
+
+        let syndrome = (s2 << 2) | (s1 << 1) | s0;
+        let corrected = received;
+
+        if (syndrome !== 0) {
+            const errorTable = { 7: 6, 3: 5, 5: 4, 6: 3, 4: 2, 2: 1, 1: 0 };
+            const bitPos = errorTable[syndrome];
+            if (bitPos !== undefined) {
+                corrected ^= (1 << bitPos);
             }
-
-            const input = document.getElementById('msgInput');
-            const text = input.value.trim();
-            if (!text || isTransmitting) return;
-
-            encodeAndTransmitMFSK(text);
-            input.value = '';
         }
 
-        async function initLiveAudio() {
-            try {
-                const AudioContext = window.AudioContext || window.webkitAudioContext;
-                audioCtx = new AudioContext();
+        return ((corrected >> 6) & 1) << 3 | 
+               ((corrected >> 5) & 1) << 2 | 
+               ((corrected >> 4) & 1) << 1 | 
+               ((corrected >> 3) & 1);
+    }
 
-                micStream = await navigator.mediaDevices.getUserMedia({
-                    audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false, channelCount: 1 },
-                    video: false
-                });
-
-                const micSource = audioCtx.createMediaStreamSource(micStream);
-                analyser = audioCtx.createAnalyser();
-                analyser.fftSize = 2048;
-                micSource.connect(analyser);
-
-                logMessage("sys", "Audio Engine online. MFSK decoder with symbol repetition active.");
-                startDecoderPolling();
-                return true;
-            } catch (e) {
-                logMessage("sys", `Audio Init Error: ${e.message}`);
-                return false;
-            }
-        }
-
-        // --- MFSK DECODER LOOP (WITH REPETITION COLLAPSING) ---
-        function startDecoderPolling() {
-            setInterval(() => {
-                if (!analyser || isTransmitting) return;
-
-                const bufferLength = analyser.frequencyBinCount;
-                const dataArray = new Uint8Array(bufferLength);
-                analyser.getByteFrequencyData(dataArray);
-
-                const sampleRate = audioCtx.sampleRate;
-                const binSize = (sampleRate / 2) / bufferLength;
-
-                let strongestCh = -1;
-                let maxEnergy = 0;
-
-                for (let ch = 0; ch < NUM_CHANNELS; ch++) {
-                    const chLow = BASE_FREQ + (ch * CHANNEL_WIDTH);
-                    const chHigh = chLow + CHANNEL_WIDTH;
-
-                    let totalEnergy = 0;
-                    let count = 0;
-                    for (let i = 0; i < bufferLength; i++) {
-                        const f = i * binSize;
-                        if (f >= chLow && f < chHigh) {
-                            totalEnergy += dataArray[i];
-                            count++;
-                        }
-                    }
-
-                    const avg = totalEnergy / (count || 1);
-                    const meterFill = document.getElementById(`meter-${ch}`);
-                    if (meterFill) {
-                        meterFill.style.width = `${Math.min((avg / 128) * 100, 100)}%`;
-                    }
-
-                    if (avg > maxEnergy) {
-                        maxEnergy = avg;
-                        strongestCh = (avg >= SQUELCH_THRESHOLD) ? ch : -1;
-                    }
-                }
-
-                const now = Date.now();
-
-                if (strongestCh !== -1) {
-                    if (!isReceiving) {
-                        isReceiving = true;
-                        rxRawSymbols = [];
-                        logMessage("sys", `[RX] Squelch Open. Signal detected on Sub-CH ${strongestCh}. Decoding...`);
-                    }
-
-                    if (strongestCh !== lastCapturedSymbol || (now - symbolCaptureTimer) >= SYMBOL_DURATION * 1000) {
-                        rxRawSymbols.push(strongestCh);
-                        lastCapturedSymbol = strongestCh;
-                        symbolCaptureTimer = now;
-                    }
-                } else {
-                    if (isReceiving) {
-                        isReceiving = false;
-                        lastCapturedSymbol = -1;
-
-                        // Step 1: Collapse 2x symbol repetitions into single symbols
-                        let collapsedSymbols = [];
-                        for (let i = 0; i < rxRawSymbols.length; i += REPETITION_FACTOR) {
-                            // Take the first of the repeated block (or implement majority voting)
-                            collapsedSymbols.push(rxRawSymbols[i]);
-                        }
-
-                        // Step 2: Reconstruct ASCII characters from 3-bit symbol pairs
-                        let decodedMessage = "";
-                        for (let i = 0; i < collapsedSymbols.length - 1; i += 2) {
-                            let highBits = collapsedSymbols[i];
-                            let lowBits = collapsedSymbols[i + 1];
-                            let charCode = (highBits << 3) | lowBits;
-                            
-                            if (charCode >= 32 && charCode <= 126) {
-                                decodedMessage += String.fromCharCode(charCode);
-                            }
-                        }
-
-                        if (decodedMessage.length > 0) {
-                            logMessage("rx", `[RX DECODED] ${decodedMessage}`);
-                        } else {
-                            logMessage("sys", `[RX] Squelch Closed (Packet too short or corrupted).`);
-                        }
-
-                        rxRawSymbols = [];
-                    }
-                }
-            }, 30);
-        }
-
-        // --- MFSK ENCODER LOOP (WITH 2X REPETITION) ---
-        function encodeAndTransmitMFSK(text) {
-            if (isTransmitting) return;
-            isTransmitting = true;
-
-            const durationSelect = document.getElementById('txDuration');
-            const maxTxDuration = parseInt(durationSelect.value) || 5;
-            
-            logMessage("tx", `[MFSK TX] Encoding "${text}" (2x Repetition, ${maxTxDuration}s window)`);
-
-            const now = audioCtx.currentTime;
-
-            // Convert text into 3-bit symbols
-            let baseSymbols = [];
-            for (let i = 0; i < text.length; i++) {
-                let charCode = text.charCodeAt(i);
-                baseSymbols.push((charCode >> 3) & 0x07);
-                baseSymbols.push(charCode & 0x07);
-            }
-
-            // Apply 2x Symbol Repetition
-            let repeatedSymbols = [];
-            baseSymbols.forEach(sym => {
-                for (let r = 0; r < REPETITION_FACTOR; r++) {
-                    repeatedSymbols.push(sym);
-                }
+    // --- AUDIO INITIALIZATION ---
+    async function initAudio() {
+        try {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            micStream = await navigator.mediaDevices.getUserMedia({
+                audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false }
             });
+            
+            const source = audioCtx.createMediaStreamSource(micStream);
+            analyser = audioCtx.createAnalyser();
+            analyser.fftSize = 2048;
+            source.connect(analyser);
 
-            let cursorTime = now;
+            if (audioCtx.state === 'suspended') {
+                await audioCtx.resume();
+            }
 
-            // Open Preamble tone (200ms on first symbol)
-            const primaryCh = repeatedSymbols[0] || 0;
-            const preambleFreq = BASE_FREQ + (primaryCh * CHANNEL_WIDTH) + (CHANNEL_WIDTH / 2);
-            playTone(preambleFreq, cursorTime, 0.2, 0.6);
-            cursorTime += 0.2;
+            document.getElementById('connection-status').textContent = 'AUDIO ACTIVE';
+            document.getElementById('connection-status').classList.add('active');
+            logMsg("[SYS] Audio hardware initialized. Automatic carrier squelch engaged.");
+            
+            startReceiverLoop();
+        } catch (err) {
+            logMsg("[ERR] Audio init failed: " + err.message);
+        }
+    }
 
-            // Timed Tone Shift Loop
-            repeatedSymbols.forEach((sym) => {
-                if ((cursorTime - now) >= maxTxDuration) return;
+    // --- TRANSMITTER ENGINE ---
+    async function transmitMessage() {
+        if (!audioCtx) {
+            alert("Initialize audio engine first!");
+            return;
+        }
+        const text = document.getElementById('tx-input').value;
+        if (!text) return;
+        document.getElementById('tx-input').value = '';
+        logMsg("[TX] Sending: " + text);
 
-                const toneFreq = BASE_FREQ + (sym * CHANNEL_WIDTH) + (CHANNEL_WIDTH / 2);
-                playTone(toneFreq, cursorTime, SYMBOL_DURATION, 0.5);
-                cursorTime += SYMBOL_DURATION;
+        let symbols = [];
+        for (let i = 0; i < text.length; i++) {
+            let byte = text.charCodeAt(i);
+            let highNibble = (byte >> 4) & 0x0F;
+            let lowNibble = byte & 0x0F;
+
+            [highNibble, lowNibble].forEach(nibble => {
+                let codeword = encodeHamming74(nibble);
+                symbols.push((codeword >> 4) & 0x07);
+                symbols.push((codeword >> 1) & 0x07);
+                symbols.push(codeword & 0x01);
             });
-
-            setTimeout(() => {
-                logMessage("sys", `[TX] Transmission complete. Carrier dropped (Squelch Close).`);
-                isTransmitting = false;
-            }, (maxTxDuration + 0.3) * 1000);
         }
 
-        function playTone(freq, startTime, duration, volume) {
-            if (!audioCtx) return;
-            const osc = audioCtx.createOscillator();
-            const gain = audioCtx.createGain();
-            
+        let startTime = audioCtx.currentTime + 0.1;
+        symbols.forEach((sym, index) => {
+            let freq = BASE_FREQ + (sym * CHANNEL_WIDTH) + (CHANNEL_WIDTH / 2);
+            let t = startTime + (index * SYMBOL_DURATION);
+
+            let osc = audioCtx.createOscillator();
+            let gain = audioCtx.createGain();
+
             osc.type = 'sine';
-            osc.frequency.setValueAtTime(freq, startTime);
-            
-            gain.gain.setValueAtTime(volume, startTime);
-            gain.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
+            osc.frequency.setValueAtTime(freq, t);
+
+            gain.gain.setValueAtTime(0, t);
+            gain.gain.linearRampToValueAtTime(0.7, t + RAMP_TIME);
+            gain.gain.setValueAtTime(0.7, t + SYMBOL_DURATION - RAMP_TIME);
+            gain.gain.linearRampToValueAtTime(0, t + SYMBOL_DURATION);
 
             osc.connect(gain);
             gain.connect(audioCtx.destination);
 
-            osc.start(startTime);
-            osc.stop(startTime + duration);
-        }
-
-        function logMessage(type, text) {
-            const log = document.getElementById('chatLog');
-            const div = document.createElement('div');
-            div.className = `msg msg-${type}`;
-            div.innerText = `[${new Date().toLocaleTimeString()}] ${text}`;
-            log.appendChild(div);
-            log.scrollTop = log.scrollHeight;
-        }
-
-        document.getElementById('msgInput').addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') handleTxOrInit();
+            osc.start(t);
+            osc.stop(t + SYMBOL_DURATION);
         });
-    </script>
-</body>
+    }
+
+    // --- AUTOMATIC RECEIVER SQUELCH LOOP ---
+    function startReceiverLoop() {
+        if (isListening) return;
+        isListening = true;
+
+        const bufferLength = analyser.frequencyBinCount;
+        const dataArray = new Uint8Array(bufferLength);
+        const canvas = document.getElementById('waterfall');
+        const canvasCtx = canvas.getContext('2d');
+
+        function loop() {
+            requestAnimationFrame(loop);
+            analyser.getByteFrequencyData(dataArray);
+
+            canvasCtx.fillStyle = '#000';
+            canvasCtx.fillRect(0, 0, canvas.width, canvas.height);
+            let barWidth = canvas.width / NUM_CHANNELS;
+            
+            let maxBinVal = 0;
+            let dominantChannel = -1;
+
+            for (let i = 0; i < NUM_CHANNELS; i++) {
+                let targetFreq = BASE_FREQ + (i * CHANNEL_WIDTH) + (CHANNEL_WIDTH / 2);
+                let binIndex = Math.round(targetFreq / (audioCtx.sampleRate / analyser.fftSize));
+                let val = dataArray[binIndex] || 0;
+
+                if (val > maxBinVal) {
+                    maxBinVal = val;
+                    dominantChannel = i;
+                }
+                
+                canvasCtx.fillStyle = val > 120 ? '#00ff66' : '#113311';
+                canvasCtx.fillRect(i * barWidth, canvas.height - (val / 255) * canvas.height, barWidth - 2, (val / 255) * canvas.height);
+            }
+
+            // Squelch state machine tracking
+            if (!isReceiving) {
+                if (maxBinVal > SQUELCH_ENERGY_LIMIT) {
+                    isReceiving = true;
+                    symbolBuffer = [];
+                    silenceFrames = 0;
+                    logMsg("[RX] Squelch Open. " + dominantChannel);
+                }
+            } else {
+                if (maxBinVal > SQUELCH_ENERGY_LIMIT) {
+                    silenceFrames = 0;
+                    symbolBuffer.push(dominantChannel);
+                } else {
+                    silenceFrames++;
+                    if (silenceFrames > SILENCE_THRESHOLD_FRAMES) {
+                        isReceiving = false;
+                        logMsg("[RX] Carrier dropped. Squelch Closed.");
+                        processPacketBuffer(symbolBuffer);
+                        symbolBuffer = [];
+                    }
+                }
+            }
+        }
+        loop();
+    }
+
+    // --- PACKET UNPACKING & DECODER ---
+    function processPacketBuffer(symbols) {
+        if (symbols.length < 6) {
+            logMsg("[ERR] Packet too short or corrupted.");
+            return;
+        }
+
+        logMsg("[RX] Captured " + symbols.length + " symbols. Reconstructing payload...");
+        let decodedBytes = [];
+
+        for (let i = 0; i <= symbols.length - 6; i += 6) {
+            let h1 = symbols[i];
+            let h2 = symbols[i+1];
+            let h3 = symbols[i+2];
+            let highCodeword = (h1 << 4) | (h2 << 1) | (h3 & 0x01);
+            let highNibble = decodeHamming74(highCodeword);
+
+            let l1 = symbols[i+3];
+            let l2 = symbols[i+4];
+            let l3 = symbols[i+5];
+            let lowCodeword = (l1 << 4) | (l2 << 1) | (l3 & 0x01);
+            let lowNibble = decodeHamming74(lowCodeword);
+
+            let asciiByte = (highNibble << 4) | lowNibble;
+            decodedBytes.push(asciiByte);
+        }
+
+        let decodedMessage = String.fromCharCode.apply(null, decodedBytes);
+        logMsg("[RX TEXT] " + decodedMessage);
+    }
+</script>
 </html>
