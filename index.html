@@ -1,0 +1,607 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>K8-1 (Kate) Live MFSK Terminal</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        tactical: {
+                            bg: '#080b0c',
+                            panel: '#101518',
+                            border: '#1a2327',
+                            green: '#00ff66',
+                            amber: '#ffaa00',
+                            red: '#ff3344',
+                            cyan: '#00ccff',
+                            text: '#d0dfdf',
+                            dim: '#415258'
+                        }
+                    },
+                    fontFamily: {
+                        mono: ['Courier New', 'Courier', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body {
+            background-color: #080b0c;
+            color: #d0dfdf;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            touch-action: manipulation;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        .scanline-bg {
+            background: linear-gradient(
+                rgba(16, 21, 24, 0) 50%, 
+                rgba(0, 0, 0, 0.4) 50%
+            );
+            background-size: 100% 4px;
+        }
+
+        .glow-green { box-shadow: 0 0 10px rgba(0, 255, 102, 0.4); }
+        .glow-amber { box-shadow: 0 0 10px rgba(255, 170, 0, 0.4); }
+        .glow-red { box-shadow: 0 0 12px rgba(255, 51, 68, 0.6); }
+        .glow-cyan { box-shadow: 0 0 10px rgba(0, 204, 255, 0.4); }
+
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-track { background: #080b0c; }
+        ::-webkit-scrollbar-thumb { background: #1a2327; border-radius: 2px; }
+        ::-webkit-scrollbar-thumb:hover { background: #00ff66; }
+    </style>
+</head>
+<body class="h-screen w-screen overflow-hidden flex flex-col justify-between scanline-bg">
+
+    <!-- TOP HEADER -->
+    <header class="bg-tactical-panel border-b border-tactical-border px-3 py-2 flex justify-between items-center z-10 select-none">
+        <div class="flex items-center space-x-2">
+            <div class="w-3 h-3 rounded-full bg-tactical-amber" id="sysStatusLed"></div>
+            <div>
+                <h1 class="text-sm font-bold tracking-wider text-tactical-green font-mono flex items-center gap-2">
+                    <span>K8-1</span>
+                    <span class="text-xs bg-tactical-border text-tactical-cyan px-1.5 py-0.5 rounded border border-tactical-dim">LIVE DSP HARDWARE</span>
+                </h1>
+                <p class="text-[10px] text-tactical-dim leading-none">8 OPERATORS / 1-SEC SIMULTANEOUS CADENCE</p>
+            </div>
+        </div>
+
+        <div class="flex items-center space-x-2 text-xs font-mono">
+            <div class="text-right hidden sm:block">
+                <div class="text-[9px] text-tactical-dim">PASSBAND RANGE</div>
+                <div class="text-tactical-cyan font-bold">400 - 2800 Hz</div>
+            </div>
+            <button id="toggleAudioBtn" onclick="toggleAudioEngine()" class="bg-tactical-border hover:bg-tactical-dim text-tactical-amber px-2 py-1 rounded border border-tactical-dim text-xs flex items-center space-x-1 font-bold">
+                <i class="fas fa-microphone-slash" id="audioIcon"></i>
+                <span id="audioStatusText">START AUDIO ENGINE</span>
+            </button>
+        </div>
+    </header>
+
+    <!-- MAIN BODY SECTION -->
+    <main class="flex-1 grid grid-cols-1 md:grid-cols-3 gap-2 p-2 overflow-hidden">
+        
+        <!-- LEFT PANEL: 8-CHANNEL OCCUPANCY SPECTROGRAM & AUTO-ALLOCATOR -->
+        <section class="bg-tactical-panel border border-tactical-border rounded p-2 flex flex-col justify-between md:col-span-1 overflow-hidden">
+            <div class="flex justify-between items-center border-b border-tactical-border pb-1 mb-2">
+                <span class="text-xs font-bold text-tactical-amber font-mono flex items-center gap-1">
+                    <i class="fas fa-network-wired"></i> 8-CH PASSBAND MATRIX
+                </span>
+                <span class="text-[10px] text-tactical-green font-mono font-bold" id="slotTicker">CADENCE: 1.0s</span>
+            </div>
+
+            <!-- 8 Channel Slot Matrix -->
+            <div class="flex-1 flex flex-col justify-between space-y-1 my-1 font-mono text-xs" id="channelGrid">
+                <!-- Dynamically populated by JavaScript -->
+            </div>
+
+            <!-- Real-time Spectrum Canvas -->
+            <div class="mt-2 border border-tactical-border rounded bg-black p-1 h-16 flex flex-col justify-between">
+                <div class="text-[8px] text-tactical-dim flex justify-between">
+                    <span>400Hz (CH 0)</span>
+                    <span>1600Hz</span>
+                    <span>2800Hz (CH 7)</span>
+                </div>
+                <canvas id="spectrumCanvas" class="w-full h-10 block"></canvas>
+            </div>
+        </section>
+
+        <!-- RIGHT PANEL: LIVE TRAFFIC STREAM -->
+        <section class="bg-tactical-panel border border-tactical-border rounded p-2 flex flex-col justify-between md:col-span-2 overflow-hidden">
+            <div class="flex justify-between items-center border-b border-tactical-border pb-1 mb-1">
+                <span class="text-xs font-bold text-tactical-green font-mono flex items-center gap-1">
+                    <i class="fas fa-satellite-dish"></i> LIVE RADIO CHAT TRAFFIC
+                </span>
+                <div class="flex items-center space-x-2">
+                    <span class="text-[10px] text-tactical-dim font-mono">CHANNEL OCCUPANCY: <span class="text-tactical-amber font-bold" id="activeUsersCount">0/8 BUSY</span></span>
+                    <button onclick="clearLog()" class="text-[10px] text-tactical-dim hover:text-tactical-text">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Chat Stream -->
+            <div id="chatDisplay" class="flex-1 overflow-y-auto font-mono text-xs p-2 space-y-1 bg-tactical-bg border border-tactical-border rounded">
+                <!-- Chat lines appended dynamically -->
+            </div>
+        </section>
+    </main>
+
+    <!-- FOOTER: TRANSMIT CONTROLS & AUTO-ASSIGNMENT BAR -->
+    <footer class="bg-tactical-panel border-t border-tactical-border p-2 z-10 select-none">
+        <!-- INPUT & PTT -->
+        <div class="flex items-center space-x-2 font-mono">
+            <!-- Auto Slot Mode Indicator -->
+            <div class="w-32 bg-tactical-bg border border-tactical-border rounded p-1 text-center">
+                <span class="block text-[8px] text-tactical-dim uppercase leading-none">ASSIGNMENT</span>
+                <span class="text-xs font-bold text-tactical-green flex items-center justify-center gap-1 mt-0.5" id="autoSlotLabel">
+                    <i class="fas fa-wand-magic-sparkles text-[10px]"></i> AUTO FREE
+                </span>
+            </div>
+
+            <!-- Callsign Field -->
+            <div class="w-24">
+                <label class="block text-[8px] text-tactical-dim uppercase leading-none mb-0.5">CALLSIGN</label>
+                <input type="text" id="callsignInput" value="KJ5NOV" maxlength="8" class="w-full bg-tactical-bg text-tactical-cyan border border-tactical-border rounded px-1.5 py-1 text-xs font-bold uppercase focus:outline-none focus:border-tactical-cyan">
+            </div>
+
+            <!-- Message Input -->
+            <div class="flex-1">
+                <label class="block text-[8px] text-tactical-dim uppercase leading-none mb-0.5">BURST MESSAGE</label>
+                <input type="text" id="messageInput" placeholder="Initialize audio to enable transmit..." disabled class="w-full bg-tactical-bg text-tactical-text border border-tactical-border rounded px-2 py-1 text-xs focus:outline-none focus:border-tactical-green disabled:opacity-50">
+            </div>
+
+            <!-- Transmit Button -->
+            <div>
+                <button id="pttButton" onclick="handleTransmit()" disabled class="bg-tactical-border text-tactical-dim font-extrabold px-3 py-2 rounded text-xs flex items-center space-x-1 border border-tactical-dim cursor-not-allowed">
+                    <i class="fas fa-bolt"></i>
+                    <span id="pttText">AUTO TX</span>
+                </button>
+            </div>
+        </div>
+    </footer>
+
+    <!-- JAVASCRIPT: LIVE DSP & HARDWARE AUDIO CAPTURE ENGINE -->
+    <script>
+        const NUM_CHANNELS = 8;
+        const BASE_FREQ = 400;
+        const CHANNEL_WIDTH = 300;
+        const SYMBOL_DURATION = 0.05;
+        const PREAMBLE_DURATION = 0.1;
+        const SLOT_DURATION = 1.0;
+
+        let audioCtx = null;
+        let analyser = null;
+        let micStream = null;
+        let isAudioEnabled = false;
+        let isTransmitting = false;
+        
+        let channelLevels = new Array(NUM_CHANNELS).fill(0);
+        let channelStates = new Array(NUM_CHANNELS).fill(0); // 0: Idle, 1: RX Busy, 2: My TX
+
+        window.addEventListener('DOMContentLoaded', () => {
+            initChannelGrid();
+            initSpectrumCanvas();
+            logSystemMessage("K8-1 Kate Live Hardware Terminal Ready.");
+            logSystemMessage("Tap 'START AUDIO ENGINE' to enable mic/line-in capture.");
+
+            document.getElementById('messageInput').addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') handleTransmit();
+            });
+
+            requestAnimationFrame(renderLoop);
+        });
+
+        function initChannelGrid() {
+            const gridContainer = document.getElementById('channelGrid');
+            gridContainer.innerHTML = '';
+
+            for (let i = 0; i < NUM_CHANNELS; i++) {
+                const centerFreq = BASE_FREQ + (i * CHANNEL_WIDTH) + (CHANNEL_WIDTH / 2);
+                
+                const row = document.createElement('div');
+                row.className = 'flex items-center space-x-2 bg-tactical-bg p-1 rounded border border-tactical-border/60';
+                row.innerHTML = `
+                    <div class="w-8 text-[10px] font-bold text-tactical-amber">CH ${i}</div>
+                    <div class="w-12 text-[9px] text-tactical-dim">${centerFreq}Hz</div>
+                    <div class="flex-1 h-2.5 bg-tactical-panel rounded overflow-hidden p-0.5 border border-tactical-border">
+                        <div id="meterBar-${i}" class="h-full bg-tactical-green rounded transition-all duration-75" style="width: 0%;"></div>
+                    </div>
+                    <div id="callBadge-${i}" class="w-14 text-[9px] font-bold text-center text-tactical-dim truncate">IDLE</div>
+                    <div id="sqIndicator-${i}" class="w-2 h-2 rounded-full bg-tactical-border"></div>
+                `;
+                gridContainer.appendChild(row);
+            }
+        }
+
+        async function toggleAudioEngine() {
+            if (isAudioEnabled) {
+                stopAudioEngine();
+                return;
+            }
+
+            try {
+                const AudioContext = window.AudioContext || window.webkitAudioContext;
+                audioCtx = new AudioContext();
+
+                // Connect to physical hardware microphone or Digirig line-in
+                micStream = await navigator.mediaDevices.getUserMedia({
+                    audio: {
+                        echoCancellation: false,  // CRITICAL: Prevent clipping of digital tones
+                        noiseSuppression: false,  // CRITICAL: Preserve raw sub-carrier frequencies
+                        autoGainControl: false,   // CRITICAL: Keep symbol amplitudes constant
+                        channelCount: 1
+                    },
+                    video: false
+                });
+
+                const micSource = audioCtx.createMediaStreamSource(micStream);
+                analyser = audioCtx.createAnalyser();
+                analyser.fftSize = 2048; // Higher FFT bin resolution for 50Hz tone spacing
+                micSource.connect(analyser);
+
+                isAudioEnabled = true;
+
+                // Update UI state
+                const btn = document.getElementById('toggleAudioBtn');
+                const icon = document.getElementById('audioIcon');
+                const text = document.getElementById('audioStatusText');
+                const led = document.getElementById('sysStatusLed');
+
+                btn.className = "bg-tactical-green text-black px-2 py-1 rounded border border-emerald-300 text-xs flex items-center space-x-1 font-bold glow-green";
+                icon.className = "fas fa-microphone";
+                text.textContent = "DSP: LIVE RX/TX";
+                led.className = "w-3 h-3 rounded-full bg-tactical-green animate-pulse glow-green";
+
+                // Enable Transmit Controls
+                const msgInput = document.getElementById('messageInput');
+                const pttBtn = document.getElementById('pttButton');
+                msgInput.disabled = false;
+                msgInput.placeholder = "Type text (auto-assigned to open channel)...";
+                pttBtn.disabled = false;
+                pttBtn.className = "bg-tactical-green hover:bg-emerald-400 text-black font-extrabold px-3 py-2 rounded text-xs flex items-center space-x-1 glow-green border border-emerald-300 cursor-pointer";
+
+                logSystemMessage("Audio engine initialized. Listening to live line-in/mic hardware.");
+                startRxDemodulatorCadence();
+            } catch (err) {
+                logSystemMessage(`Audio Access Error: ${err.message}`);
+                console.error("Microphone capture failed:", err);
+            }
+        }
+
+        function stopAudioEngine() {
+            if (micStream) {
+                micStream.getTracks().forEach(track => track.stop());
+            }
+            if (audioCtx) {
+                audioCtx.close();
+            }
+
+            isAudioEnabled = false;
+
+            const btn = document.getElementById('toggleAudioBtn');
+            const icon = document.getElementById('audioIcon');
+            const text = document.getElementById('audioStatusText');
+            const led = document.getElementById('sysStatusLed');
+
+            btn.className = "bg-tactical-border hover:bg-tactical-dim text-tactical-amber px-2 py-1 rounded border border-tactical-dim text-xs flex items-center space-x-1 font-bold";
+            icon.className = "fas fa-microphone-slash";
+            text.textContent = "START AUDIO ENGINE";
+            led.className = "w-3 h-3 rounded-full bg-tactical-amber";
+
+            const msgInput = document.getElementById('messageInput');
+            const pttBtn = document.getElementById('pttButton');
+            msgInput.disabled = true;
+            msgInput.placeholder = "Initialize audio to enable transmit...";
+            pttBtn.disabled = true;
+            pttBtn.className = "bg-tactical-border text-tactical-dim font-extrabold px-3 py-2 rounded text-xs flex items-center space-x-1 border border-tactical-dim cursor-not-allowed";
+
+            logSystemMessage("Audio engine stopped.");
+        }
+
+        // Live RX Demodulator Cadence (Strict 1.0-second ticks)
+        function startRxDemodulatorCadence() {
+            setInterval(() => {
+                if (!analyser || isTransmitting || !isAudioEnabled) return;
+
+                const bufferLength = analyser.frequencyBinCount;
+                const dataArray = new Uint8Array(bufferLength);
+                analyser.getByteFrequencyData(dataArray);
+
+                const sampleRate = audioCtx.sampleRate;
+                const binSize = (sampleRate / 2) / bufferLength;
+
+                let busyCount = 0;
+
+                for (let ch = 0; ch < NUM_CHANNELS; ch++) {
+                    const chLow = BASE_FREQ + (ch * CHANNEL_WIDTH);
+                    const chHigh = chLow + CHANNEL_WIDTH;
+
+                    let totalEnergy = 0;
+                    let count = 0;
+
+                    for (let i = 0; i < bufferLength; i++) {
+                        const freq = i * binSize;
+                        if (freq >= chLow && freq < chHigh) {
+                            totalEnergy += dataArray[i];
+                            count++;
+                        }
+                    }
+
+                    const avgEnergy = totalEnergy / (count || 1);
+                    const normalizedLevel = Math.min((avgEnergy / 128) * 100, 100);
+                    channelLevels[ch] = normalizedLevel;
+
+                    const sq = document.getElementById(`sqIndicator-${ch}`);
+                    const badge = document.getElementById(`callBadge-${ch}`);
+
+                    if (normalizedLevel > 25) { // Squelch threshold
+                        channelStates[ch] = 1; // RX Active
+                        busyCount++;
+                        if (sq) sq.className = "w-2 h-2 rounded-full bg-tactical-green glow-green";
+                        if (badge) {
+                            badge.className = "w-14 text-[9px] font-bold text-center text-tactical-green truncate";
+                            badge.textContent = "RX TRAFFIC";
+                        }
+                    } else if (channelStates[ch] !== 2) { // If not transmitting
+                        channelStates[ch] = 0;
+                        if (sq) sq.className = "w-2 h-2 rounded-full bg-tactical-border";
+                        if (badge) {
+                            badge.className = "w-14 text-[9px] font-bold text-center text-tactical-dim truncate";
+                            badge.textContent = "IDLE";
+                        }
+                    }
+                }
+
+                document.getElementById('activeUsersCount').textContent = `${busyCount}/8 BUSY`;
+
+            }, 1000); // 1-second cadence
+        }
+
+        function findAvailableSubChannel() {
+            for (let i = 0; i < NUM_CHANNELS; i++) {
+                if (channelStates[i] === 0 && channelLevels[i] < 20) {
+                    return i;
+                }
+            }
+            return -1; // All sub-channels busy
+        }
+
+        function handleTransmit() {
+            if (isTransmitting || !isAudioEnabled) return;
+
+            const msgInput = document.getElementById('messageInput');
+            const callsignInput = document.getElementById('callsignInput');
+            
+            const message = msgInput.value.trim();
+            const callsign = callsignInput.value.trim().toUpperCase() || 'KJ5NOV';
+
+            if (!message) return;
+
+            const targetCh = findAvailableSubChannel();
+            if (targetCh === -1) {
+                logSystemMessage("ALL 8 SUB-CHANNELS BUSY! TRANSMIT CANCELLED.");
+                return;
+            }
+
+            setPTTState(true);
+
+            // Break long text into 10-character blocks across 1-second slots
+            const chunkSize = 10;
+            let chunks = [];
+            for (let i = 0; i < message.length; i += chunkSize) {
+                chunks.push(message.substring(i, i + chunkSize));
+            }
+
+            let currentChunkIndex = 0;
+
+            function sendNextSlot() {
+                if (currentChunkIndex < chunks.length) {
+                    const chunkText = chunks[currentChunkIndex];
+
+                    channelStates[targetCh] = 2; // My TX
+                    markChannelTx(targetCh, callsign);
+
+                    playMFSKSymbolBurst(targetCh, chunkText);
+                    logMessage(`[TX CH ${targetCh}] ${callsign}: ${chunkText}`, 'tx');
+
+                    currentChunkIndex++;
+                    setTimeout(sendNextSlot, SLOT_DURATION * 1000);
+                } else {
+                    setTimeout(() => {
+                        channelStates[targetCh] = 0;
+                        setPTTState(false);
+                        msgInput.value = '';
+                    }, 150);
+                }
+            }
+
+            sendNextSlot();
+        }
+
+        function playMFSKSymbolBurst(channelIdx, textPayload) {
+            if (!audioCtx) return;
+
+            const centerFreq = BASE_FREQ + (channelIdx * CHANNEL_WIDTH) + (CHANNEL_WIDTH / 2);
+            const toneSpacing = 50.0;
+            const now = audioCtx.currentTime;
+
+            const masterGain = audioCtx.createGain();
+            masterGain.gain.setValueAtTime(0.4, now);
+            masterGain.connect(audioCtx.destination);
+
+            // 1. Chirp Preamble (100ms)
+            const chirpOsc = audioCtx.createOscillator();
+            const chirpGain = audioCtx.createGain();
+            chirpOsc.type = 'sine';
+            chirpOsc.frequency.setValueAtTime(centerFreq - 100, now);
+            chirpOsc.frequency.linearRampToValueAtTime(centerFreq + 100, now + PREAMBLE_DURATION);
+            
+            chirpGain.gain.setValueAtTime(1.0, now);
+            chirpGain.gain.setValueAtTime(0.0, now + PREAMBLE_DURATION);
+            
+            chirpOsc.connect(chirpGain);
+            chirpGain.connect(masterGain);
+            
+            chirpOsc.start(now);
+            chirpOsc.stop(now + PREAMBLE_DURATION);
+
+            // 2. MFSK Tone Synthesis (50ms per symbol)
+            const encoder = new TextEncoder();
+            const bytes = encoder.encode(textPayload.padEnd(10, ' ').substring(0, 10));
+            let symbols = [];
+
+            bytes.forEach(b => {
+                symbols.push((b >> 6) & 0x03);
+                symbols.push((b >> 4) & 0x03);
+                symbols.push((b >> 2) & 0x03);
+                symbols.push(b & 0x03);
+            });
+
+            let startTime = now + PREAMBLE_DURATION;
+            symbols.forEach((sym) => {
+                const toneFreq = centerFreq - (CHANNEL_WIDTH / 4) + (sym * toneSpacing);
+                const osc = audioCtx.createOscillator();
+                const symGain = audioCtx.createGain();
+                
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(toneFreq, startTime);
+                
+                symGain.gain.setValueAtTime(0.0, startTime);
+                symGain.gain.linearRampToValueAtTime(1.0, startTime + 0.005);
+                symGain.gain.setValueAtTime(1.0, startTime + SYMBOL_DURATION - 0.005);
+                symGain.gain.linearRampToValueAtTime(0.0, startTime + SYMBOL_DURATION);
+
+                osc.connect(symGain);
+                symGain.connect(masterGain);
+
+                osc.start(startTime);
+                osc.stop(startTime + SYMBOL_DURATION);
+
+                startTime += SYMBOL_DURATION;
+            });
+        }
+
+        function markChannelTx(ch, callsign) {
+            channelLevels[ch] = 100;
+            const sq = document.getElementById(`sqIndicator-${ch}`);
+            const badge = document.getElementById(`callBadge-${ch}`);
+            if (sq) sq.className = "w-2 h-2 rounded-full bg-tactical-red glow-red";
+            if (badge) {
+                badge.className = "w-14 text-[9px] font-bold text-center text-tactical-red truncate";
+                badge.textContent = `[TX] ${callsign}`;
+            }
+        }
+
+        function setPTTState(active) {
+            isTransmitting = active;
+            const btn = document.getElementById('pttButton');
+            const pttText = document.getElementById('pttText');
+
+            if (active) {
+                btn.className = "bg-tactical-red text-white font-extrabold px-3 py-2 rounded text-xs flex items-center space-x-1 glow-red border border-red-400 animate-pulse cursor-wait";
+                pttText.textContent = "TX BURSTING...";
+            } else {
+                btn.className = "bg-tactical-green hover:bg-emerald-400 text-black font-extrabold px-3 py-2 rounded text-xs flex items-center space-x-1 glow-green border border-emerald-300 cursor-pointer";
+                pttText.textContent = "AUTO TX";
+            }
+        }
+
+        function renderLoop() {
+            for (let i = 0; i < NUM_CHANNELS; i++) {
+                const bar = document.getElementById(`meterBar-${i}`);
+                if (bar) {
+                    bar.style.width = `${channelLevels[i]}%`;
+                    bar.className = (channelStates[i] === 2) 
+                        ? "h-full bg-tactical-red rounded transition-all duration-75" 
+                        : "h-full bg-tactical-green rounded transition-all duration-75";
+                }
+            }
+            drawSpectrum();
+            requestAnimationFrame(renderLoop);
+        }
+
+        function initSpectrumCanvas() {
+            const canvas = document.getElementById('spectrumCanvas');
+            canvas.width = canvas.offsetWidth;
+            canvas.height = canvas.offsetHeight;
+        }
+
+        function drawSpectrum() {
+            const canvas = document.getElementById('spectrumCanvas');
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d');
+            const w = canvas.width;
+            const h = canvas.height;
+
+            ctx.fillStyle = '#050708';
+            ctx.fillRect(0, 0, w, h);
+
+            const step = w / NUM_CHANNELS;
+            ctx.strokeStyle = '#1a2327';
+            ctx.lineWidth = 1;
+
+            for (let i = 0; i <= NUM_CHANNELS; i++) {
+                ctx.beginPath();
+                ctx.moveTo(i * step, 0);
+                ctx.lineTo(i * step, h);
+                ctx.stroke();
+            }
+
+            for (let i = 0; i < NUM_CHANNELS; i++) {
+                const lvl = channelLevels[i];
+                if (lvl > 2) {
+                    const barHeight = (lvl / 100) * h;
+                    const x = i * step + 3;
+                    const barWidth = step - 6;
+
+                    ctx.fillStyle = (channelStates[i] === 2) ? '#ff3344' : '#00ff66';
+                    ctx.fillRect(x, h - barHeight, barWidth, barHeight);
+                }
+            }
+        }
+
+        function logMessage(htmlContent, type = 'sys') {
+            const display = document.getElementById('chatDisplay');
+            const timeStr = new Date().toLocaleTimeString('en-US', { hour12: false });
+            
+            const line = document.createElement('div');
+            line.className = "py-0.5 border-b border-tactical-border/30 flex items-start space-x-2";
+
+            let tagColor = 'text-tactical-dim';
+            if (type === 'tx') tagColor = 'text-tactical-cyan font-bold';
+            if (type === 'rx') tagColor = 'text-tactical-green font-bold';
+            if (type === 'sys') tagColor = 'text-tactical-amber';
+
+            line.innerHTML = `
+                <span class="text-tactical-dim text-[10px] select-none">[${timeStr}]</span>
+                <span class="${tagColor}">${htmlContent}</span>
+            `;
+
+            display.appendChild(line);
+            display.scrollTop = display.scrollHeight;
+        }
+
+        function logSystemMessage(msg) {
+            logMessage(`<i class="fas fa-terminal text-[10px] mr-1"></i>[SYS] ${msg}`, 'sys');
+        }
+
+        function clearLog() {
+            document.getElementById('chatDisplay').innerHTML = '';
+            logSystemMessage("Traffic log cleared.");
+        }
+
+        window.addEventListener('resize', initSpectrumCanvas);
+    </script>
+</body>
+</html>
