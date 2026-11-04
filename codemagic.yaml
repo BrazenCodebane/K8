@@ -11,7 +11,7 @@ workflows:
         script: |
           npm init -y
           npm install @capacitor/core @capacitor/cli @capacitor/android
-          npx cap init K8-1 com.k81.kate --web-dir www --orship-config
+          npx cap init K8-1 com.k81.kate --web-dir www
       - name: Prepare www assets & Capacitor Config
         script: |
           mkdir -p www
