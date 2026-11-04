@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>K8-1 Kate - Tactical MFSK Terminal</title>
+    <title>K8-1 Kate - Tactical ITA2/MFSK Terminal</title>
     <style>
         :root {
             --bg-color: #0b0f12;
@@ -56,7 +56,7 @@
         }
 
         .input-row { display: flex; gap: 8px; flex-shrink: 0; }
-        input[type="text"] { flex: 1; background: #050708; border: 1px solid var(--border-color); color: var(--accent-green); padding: 8px; font-size: 0.9rem; }
+        input[type="text"] { flex: 1; background: #050708; border: 1px solid var(--border-color); color: var(--accent-green); padding: 8px; font-size: 0.9rem; text-transform: uppercase; }
         button { background: #1a261c; border: 1px solid var(--accent-green); color: var(--accent-green); padding: 8px 16px; font-weight: bold; cursor: pointer; text-transform: uppercase; font-size: 0.8rem; }
         button:active { background: var(--accent-green); color: #000; }
         .controls-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 6px; flex-shrink: 0; }
@@ -69,15 +69,15 @@
 <body>
 
 <header>
-    <h1>K8-1 Kate // Tactical MFSK Terminal [LBT Active]</h1>
+    <h1>K8-1 Kate // Tactical ITA2 Terminal [LBT + Baudot]</h1>
     <div id="connection-status" class="status-badge">AUDIO OFFLINE</div>
 </header>
 
 <div class="main-container">
     <!-- Left Column: Message Traffic Log & Input -->
     <div class="panel">
-        <div class="panel-title">Tactical Message Traffic</div>
-        <div id="traffic-log">[SYS] Terminal ready. LBT channel rotation active.</div>
+        <div class="panel-title">Tactical Message Traffic (ITA2)</div>
+        <div id="traffic-log">[SYS] Terminal initialized. ITA2 5-bit codec active.</div>
         <div class="input-row">
             <input type="text" id="tx-input" placeholder="Enter tactical message..." autocomplete="off">
             <button onclick="transmitMessage()">Transmit</button>
@@ -93,8 +93,8 @@
                 <div class="metric-label">Baud Rate</div>
             </div>
             <div class="metric-box">
-                <div id="m-mode" class="metric-value">H(7,4)</div>
-                <div class="metric-label">FEC Mode</div>
+                <div id="m-mode" class="metric-value">ITA2</div>
+                <div class="metric-label">Codec</div>
             </div>
         </div>
         <button onclick="initAudio()" style="width: 100%; margin-bottom: 4px; flex-shrink: 0;">Init Audio Engine</button>
@@ -119,16 +119,35 @@
     let micStream = null;
     let isListening = false;
 
-    // Automatic Receiver State Machine & LBT Variables
     let isReceiving = false;
     let symbolBuffer = [];
     let silenceFrames = 0;
     const SILENCE_THRESHOLD_FRAMES = 15;
     const SQUELCH_ENERGY_LIMIT = 110;
 
-    // Channel activity timestamps (tracks last heard time for each sub-channel 0-7)
     let channelLastHeard = new Array(NUM_CHANNELS).fill(0);
-    let currentWorkingChannel = 0; // Default base channel index
+    let currentWorkingChannel = 0;
+
+    // --- ITA2 (BAUDOT) LOOKUP TABLES ---
+    const ITA2_LTRS = {
+        0: '\0', 1: 'E', 2: '\n', 3: 'A', 4: ' ', 5: 'S', 6: 'I', 7: 'U',
+        8: '\r', 9: 'D', 10: 'R', 11: 'J', 12: 'N', 13: 'F', 14: 'C', 15: 'K',
+        16: 'T', 17: 'Z', 18: 'L', 19: 'W', 20: 'H', 21: 'Y', 22: 'P', 23: 'Q',
+        24: 'O', 25: 'B', 26: 'G', 27: 'FIGS', 28: 'M', 29: 'X', 30: 'V', 31: 'LTRS'
+    };
+
+    const ITA2_FIGS = {
+        0: '\0', 1: '3', 2: '\n', 3: '-', 4: ' ', 5: '\'', 6: '8', 7: '7',
+        8: '\r', 9: '$', 10: '4', 11: '!', 12: ',', 13: '!', 14: ':', 15: '(',
+        16: '5', 17: '"', 18: ')', 19: '2', 20: '#', 21: '6', 22: '0', 23: '1',
+        24: '9', 25: '?', 26: '&', 27: 'FIGS', 28: '.', 29: '/', 30: ';', 31: 'LTRS'
+    };
+
+    // Reverse lookup maps for encoding
+    const LTRS_REV = {};
+    const FIGS_REV = {};
+    for (let k in ITA2_LTRS) if (ITA2_LTRS[k].length === 1) LTRS_REV[ITA2_LTRS[k]] = parseInt(k);
+    for (let k in ITA2_FIGS) if (ITA2_FIGS[k].length === 1) FIGS_REV[ITA2_FIGS[k]] = parseInt(k);
 
     function logTraffic(txt) {
         const log = document.getElementById('traffic-log');
@@ -142,47 +161,48 @@
         log.scrollTop = log.scrollHeight;
     }
 
-    function encodeHamming74(nibble) {
-        const d3 = (nibble >> 3) & 1;
-        const d2 = (nibble >> 2) & 1;
-        const d1 = (nibble >> 1) & 1;
-        const d0 = nibble & 1;
+    // Encode string to array of 5-bit ITA2 codes (handling LTRS/FIGS shifts)
+    function encodeITA2(str) {
+        let codes = [];
+        let currentMode = 'LTRS';
 
-        const p2 = d3 ^ d2 ^ d1;
-        const p1 = d3 ^ d2 ^ d0;
-        const p0 = d3 ^ d1 ^ d0;
-
-        return (d3 << 6) | (d2 << 5) | (d1 << 4) | (d0 << 3) | (p2 << 2) | (p1 << 1) | p0;
-    }
-
-    function decodeHamming74(received) {
-        const d3 = (received >> 6) & 1;
-        const d2 = (received >> 5) & 1;
-        const d1 = (received >> 4) & 1;
-        const d0 = (received >> 3) & 1;
-        const p2 = (received >> 2) & 1;
-        const p1 = (received >> 1) & 1;
-        const p0 = received & 1;
-
-        const s2 = p2 ^ d3 ^ d2 ^ d1;
-        const s1 = p1 ^ d3 ^ d2 ^ d0;
-        const s0 = p0 ^ d3 ^ d1 ^ d0;
-
-        let syndrome = (s2 << 2) | (s1 << 1) | s0;
-        let corrected = received;
-
-        if (syndrome !== 0) {
-            const errorTable = { 7: 6, 3: 5, 5: 4, 6: 3, 4: 2, 2: 1, 1: 0 };
-            const bitPos = errorTable[syndrome];
-            if (bitPos !== undefined) {
-                corrected ^= (1 << bitPos);
+        str = str.toUpperCase();
+        for (let i = 0; i < str.length; i++) {
+            let char = str[i];
+            if (LTRS_REV[char] !== undefined) {
+                if (currentMode !== 'LTRS') {
+                    codes.push(31); // LTRS shift code
+                    currentMode = 'LTRS';
+                }
+                codes.push(LTRS_REV[char]);
+            } else if (FIGS_REV[char] !== undefined) {
+                if (currentMode !== 'FIGS') {
+                    codes.push(27); // FIGS shift code
+                    currentMode = 'FIGS';
+                }
+                codes.push(FIGS_REV[char]);
             }
         }
+        return codes;
+    }
 
-        return ((corrected >> 6) & 1) << 3 | 
-               ((corrected >> 5) & 1) << 2 | 
-               ((corrected >> 4) & 1) << 1 | 
-               ((corrected >> 3) & 1);
+    // Decode array of 5-bit ITA2 codes back to string
+    function decodeITA2(codes) {
+        let out = '';
+        let mode = 'LTRS';
+
+        for (let i = 0; i < codes.length; i++) {
+            let code = codes[i];
+            if (code === 27) { mode = 'FIGS'; continue; }
+            if (code === 31) { mode = 'LTRS'; continue; }
+
+            if (mode === 'LTRS') {
+                out += (ITA2_LTRS[code] || '');
+            } else {
+                out += (ITA2_FIGS[code] || '');
+            }
+        }
+        return out;
     }
 
     async function initAudio() {
@@ -203,7 +223,7 @@
 
             document.getElementById('connection-status').textContent = 'AUDIO ACTIVE';
             document.getElementById('connection-status').classList.add('active');
-            logInfo("[SYS] Audio active. LBT channel monitor engaged.");
+            logInfo("[SYS] Audio active. ITA2 receiver engaged.");
             
             startReceiverLoop();
         } catch (err) {
@@ -211,22 +231,18 @@
         }
     }
 
-    // --- LOGICAL CHANNEL ASSIGNMENT & LBT TRANSMISSION ---
     function getNextClearChannel() {
         let now = Date.now();
         let attempts = 0;
-
-        // Check if current channel was heard in last 5 seconds (5000ms)
         while (attempts < NUM_CHANNELS) {
-            let lastHeard = channelLastHeard[currentWorkingChannel];
-            if (now - lastHeard > 5000) {
-                return currentWorkingChannel; // Clear channel found
+            if (now - channelLastHeard[currentWorkingChannel] > 5000) {
+                return currentWorkingChannel;
             }
-            logInfo(`[LBT] Channel ${currentWorkingChannel} busy (heard < 5s). Shifting to chan+1...`);
+            logInfo(`[LBT] Channel ${currentWorkingChannel} busy. Shifting...`);
             currentWorkingChannel = (currentWorkingChannel + 1) % NUM_CHANNELS;
             attempts++;
         }
-        return currentWorkingChannel; // Fallback if all are busy
+        return currentWorkingChannel;
     }
 
     async function transmitMessage() {
@@ -237,26 +253,21 @@
         const text = document.getElementById('tx-input').value;
         if (!text) return;
         document.getElementById('tx-input').value = '';
-        
-        // Perform Listen-Before-Talk logical channel assignment
+
         let activeTxBaseChannel = getNextClearChannel();
-        logInfo(`[TX] Selected Working Base Channel: CH ${activeTxBaseChannel}`);
-        logTraffic("[TX] " + text);
+        logInfo(`[TX] Base Channel: CH ${activeTxBaseChannel}`);
+        logTraffic("[TX] " + text.toUpperCase());
 
+        let ita2Codes = encodeITA2(text);
         let symbols = [];
-        for (let i = 0; i < text.length; i++) {
-            let byte = text.charCodeAt(i);
-            let highNibble = (byte >> 4) & 0x0F;
-            let lowNibble = byte & 0x0F;
 
-            [highNibble, lowNibble].forEach(nibble => {
-                let codeword = encodeHamming74(nibble);
-                // Offset symbols logically by the clear channel base
-                symbols.push(((codeword >> 4) + activeTxBaseChannel) % NUM_CHANNELS);
-                symbols.push(((codeword >> 1) + activeTxBaseChannel) % NUM_CHANNELS);
-                symbols.push(((codeword & 0x01) + activeTxBaseChannel) % NUM_CHANNELS);
-            });
-        }
+        // Pack each 5-bit ITA2 code into two 3-bit MFSK symbols
+        ita2Codes.forEach(code => {
+            let sym1 = (code >> 2) & 0x07; // Upper 3 bits
+            let sym2 = code & 0x03;        // Lower 2 bits
+            symbols.push((sym1 + activeTxBaseChannel) % NUM_CHANNELS);
+            symbols.push((sym2 + activeTxBaseChannel) % NUM_CHANNELS);
+        });
 
         let startTime = audioCtx.currentTime + 0.1;
         symbols.forEach((sym, index) => {
@@ -281,7 +292,6 @@
             osc.stop(t + SYMBOL_DURATION);
         });
 
-        // Advance working channel for next transmission rotation
         currentWorkingChannel = (currentWorkingChannel + 1) % NUM_CHANNELS;
     }
 
@@ -310,10 +320,7 @@
                 let binIndex = Math.round(targetFreq / (audioCtx.sampleRate / analyser.fftSize));
                 let val = dataArray[binIndex] || 0;
 
-                // Track channel activity timestamps for LBT
-                if (val > 80) {
-                    channelLastHeard[i] = Date.now();
-                }
+                if (val > 80) channelLastHeard[i] = Date.now();
 
                 if (val > maxBinVal) {
                     maxBinVal = val;
@@ -350,39 +357,24 @@
     }
 
     function processPacketBuffer(symbols) {
-        if (symbols.length < 6) {
-            logInfo("[ERR] Packet too short (" + symbols.length + " sym).");
+        if (symbols.length < 2 || symbols.length % 2 !== 0) {
+            logInfo("[ERR] Invalid symbol count (" + symbols.length + ")");
             return;
         }
 
         logInfo("[RX] Parsing " + symbols.length + " symbols...");
-        
-        // For decoding robustly across rotated base channels, we normalize back
-        let decodedBytes = [];
+        let baseCh = symbols[0];
+        let unshift = (val, base) => (val - base + NUM_CHANNELS) % NUM_CHANNELS;
 
-        for (let i = 0; i <= symbols.length - 6; i += 6) {
-            let h1 = symbols[i];
-            let h2 = symbols[i+1];
-            let h3 = symbols[i+2];
-            
-            // Unshift relative to the detected starting channel of the packet
-            let baseCh = h1; // Using first symbol as frame base reference
-            let unshift = (val, base) => (val - base + NUM_CHANNELS) % NUM_CHANNELS;
-
-            let highCodeword = (unshift(h1, baseCh) << 4) | (unshift(h2, baseCh) << 1) | (unshift(h3, baseCh) & 0x01);
-            let highNibble = decodeHamming74(highCodeword);
-
-            let l1 = symbols[i+3];
-            let l2 = symbols[i+4];
-            let l3 = symbols[i+5];
-            let lowCodeword = (unshift(l1, baseCh) << 4) | (unshift(l2, baseCh) << 1) | (unshift(l3, baseCh) & 0x01);
-            let lowNibble = decodeHamming74(lowCodeword);
-
-            let asciiByte = (highNibble << 4) | lowNibble;
-            decodedBytes.push(asciiByte);
+        let ita2Codes = [];
+        for (let i = 0; i < symbols.length; i += 2) {
+            let s1 = unshift(symbols[i], baseCh);
+            let s2 = unshift(symbols[i+1], baseCh);
+            let code = (s1 << 2) | s2;
+            ita2Codes.push(code);
         }
 
-        let decodedMessage = String.fromCharCode.apply(null, decodedBytes);
+        let decodedMessage = decodeITA2(ita2Codes);
         logTraffic("[RX] " + decodedMessage);
     }
 </script>
