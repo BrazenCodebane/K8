@@ -11,16 +11,17 @@ workflows:
         script: |
           npm init -y
           npm install @capacitor/core @capacitor/cli @capacitor/android
-          npx cap init K8-1 com.k81.kate --web-dir www
-      - name: Prepare www assets
+          npx cap init K8-1 com.k81.kate --web-dir www --orship-config
+      - name: Prepare www assets & Capacitor Config
         script: |
           mkdir -p www
           cp index.html www/index.html
+          echo '{"appId": "com.k81.kate", "appName": "K8-1 Kate", "webDir": "www"}' > capacitor.config.json
       - name: Initialize Android Platform & Sync
         script: |
           npx cap add android
           npx cap sync android
-      - name: Inject RECORD_AUDIO Permission
+      - name: Inject Audio Permissions into AndroidManifest
         script: |
           python3 -c '
           import xml.etree.ElementTree as ET
@@ -29,10 +30,13 @@ workflows:
           tree = ET.parse(path)
           root = tree.getroot()
           perm_name = "{http://schemas.android.com/apk/res/android}name"
-          if root.find(f"uses-permission[@{perm_name}=\"android.permission.RECORD_AUDIO\"]") is None:
-              perm = ET.Element("{http://schemas.android.com/apk/res/android}uses-permission", {perm_name: "android.permission.RECORD_AUDIO"})
-              root.insert(0, perm)
-              tree.write(path, encoding="utf-8", xml_declaration=True)
+          
+          perms_to_add = ["android.permission.RECORD_AUDIO", "android.permission.MODIFY_AUDIO_SETTINGS"]
+          for p in perms_to_add:
+              if root.find(f"uses-permission[@{perm_name}=\"{p}\"]") is None:
+                  perm = ET.Element("{http://schemas.android.com/apk/res/android}uses-permission", {perm_name: p})
+                  root.insert(0, perm)
+          tree.write(path, encoding="utf-8", xml_declaration=True)
           '
       - name: Lock to Landscape Orientation
         script: |
@@ -48,13 +52,6 @@ workflows:
                   act.set("{http://schemas.android.com/apk/res/android}screenOrientation", "landscape")
           tree.write(path, encoding="utf-8", xml_declaration=True)
           '
-      - name: Fix Kotlin Stdlib Duplicate Classes
-        script: |
-          echo "" >> android/app/build.gradle
-          echo "configurations.all {" >> android/app/build.gradle
-          echo "    exclude group: 'org.jetbrains.kotlin', module: 'kotlin-stdlib-jdk7'" >> android/app/build.gradle
-          echo "    exclude group: 'org.jetbrains.kotlin', module: 'kotlin-stdlib-jdk8'" >> android/app/build.gradle
-          echo "}" >> android/app/build.gradle
       - name: Set Android SDK location
         script: |
           echo "sdk.dir=$ANDROID_SDK_ROOT" > "$CM_BUILD_DIR/android/local.properties"
