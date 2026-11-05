@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>K8-1 Kate - Tactical MFSK Terminal</title>
+    <title>K8-1 Kate - 9-Tone MFSK Terminal</title>
     <style>
         :root {
             --bg-color: #0b0f12;
@@ -18,7 +18,6 @@
             --info-text: #88aa88;
         }
 
-        /* Light Mode Tactical Palette */
         [data-theme="light"] {
             --bg-color: #e4e8e4;
             --panel-bg: #d2dad2;
@@ -48,7 +47,6 @@
         .panel { background: var(--panel-bg); border: 1px solid var(--border-color); display: flex; flex-direction: column; padding: 8px; border-radius: 4px; overflow: hidden; }
         .panel-title { font-size: 0.85rem; font-weight: bold; color: var(--warning-amber); margin-bottom: 6px; text-transform: uppercase; border-bottom: 1px dashed var(--border-color); padding-bottom: 4px; flex-shrink: 0; }
         
-        /* Main Traffic Log (Left Column) */
         #traffic-log { 
             flex: 1; 
             background: var(--log-bg); 
@@ -63,7 +61,6 @@
             color: var(--text-main);
         }
 
-        /* Sub-Frame Info Log (Right Column) - Strictly limited height */
         #info-log { 
             height: 120px; 
             max-height: 120px; 
@@ -95,7 +92,7 @@
 <body>
 
 <header>
-    <h1>K8-1 Kate // Tactical MFSK Terminal</h1>
+    <h1>K8-1 Kate // 9-Tone MFSK Terminal</h1>
     <div class="header-controls">
         <button id="theme-toggle" class="theme-toggle-btn" onclick="toggleTheme()">[ ☀ LIGHT ]</button>
         <div id="connection-status" class="status-badge">AUDIO OFFLINE</div>
@@ -103,26 +100,24 @@
 </header>
 
 <div class="main-container">
-    <!-- Left Column: Message Traffic Log & Input -->
     <div class="panel">
         <div class="panel-title">Tactical Message Traffic (ITA2)</div>
-        <div id="traffic-log">[SYS] Terminal ready. 500-2500 Hz FM passband active.</div>
+        <div id="traffic-log">[SYS] Terminal ready. 9-Tone Carrier Sync Architecture active.</div>
         <div class="input-row">
             <input type="text" id="tx-input" placeholder="Enter tactical message..." autocomplete="off">
             <button onclick="transmitMessage()">Transmit</button>
         </div>
     </div>
 
-    <!-- Right Column: Telemetry, Spectrum, and Sub-Frame Info Log -->
     <div class="panel">
         <div class="panel-title">Link Telemetry</div>
         <div class="controls-grid">
             <div class="metric-box">
-                <div id="m-baud" class="metric-value">6.6</div>
+                <div id="m-baud" class="metric-value">6.25</div>
                 <div class="metric-label">Baud Rate</div>
             </div>
             <div class="metric-box">
-                <div id="m-mode" class="metric-value">ITA2</div>
+                <div id="m-mode" class="metric-value">9T-ITA2</div>
                 <div class="metric-label">Codec</div>
             </div>
         </div>
@@ -130,14 +125,12 @@
         <div class="panel-title" style="margin-top: 2px;">Spectrum Monitor</div>
         <canvas id="waterfall"></canvas>
 
-        <!-- Sub-Frame Info Log with strict height limit -->
         <div class="panel-title" style="margin-top: 6px;">System Info & Squelch</div>
         <div id="info-log">[SYS] Standby for link activity...</div>
     </div>
 </div>
 
 <script>
-    // Theme Management
     function toggleTheme() {
         const currentTheme = document.body.getAttribute('data-theme');
         const newTheme = currentTheme === 'light' ? 'dark' : 'light';
@@ -156,33 +149,35 @@
         }
     }
 
-    // Load persisted theme on start
     const savedTheme = localStorage.getItem('k81_theme');
     if (savedTheme === 'light') applyTheme('light');
 
-    // Optimized for FM Repeater Audio Passband (500 Hz to 2500 Hz)
+    // --- ARCHITECTURE DEFINITIONS ---
+    // Subfrequency band: 500 Hz total width per Channel (9 tones @ 50 Hz spacing + guard)
     const BASE_FREQ = 500;
-    const CHANNEL_WIDTH = 250;
-    const NUM_CHANNELS = 8;
-    const SYMBOL_DURATION = 0.15;
-    const RAMP_TIME = 0.015;
+    const TONE_SPACING = 50; 
+    const TONES_PER_CHANNEL = 9; // Tone 0 = Carrier, Tones 1-8 = Data
+    const SUBFREQ_BANDWIDTH = 500;
+    const NUM_SUBFREQS = 4; // 4 clear channel slots within 500-2500 Hz passband
+
+    const SYMBOL_DURATION = 0.16; // ~6.25 Baud FT8 cadence
+    const RAMP_TIME = 0.010;
 
     let audioCtx = null;
     let analyser = null;
     let micStream = null;
     let isListening = false;
 
-    // Squelch & LBT Variables
     let isReceiving = false;
     let symbolBuffer = [];
     let silenceFrames = 0;
-    const SILENCE_THRESHOLD_FRAMES = 15;
-    const SQUELCH_ENERGY_LIMIT = 110;
+    const SILENCE_THRESHOLD_FRAMES = 12;
+    const SQUELCH_ENERGY_LIMIT = 100;
 
-    let channelLastHeard = new Array(NUM_CHANNELS).fill(0);
-    let currentWorkingChannel = 0;
+    let subfreqLastHeard = new Array(NUM_SUBFREQS).fill(0);
+    let currentWorkingSubfreq = 0;
 
-    // --- ITA2 (BAUDOT) LOOKUP TABLES ---
+    // --- ITA2 LOOKUP TABLES ---
     const ITA2_LTRS = {
         0: '\0', 1: 'E', 2: '\n', 3: 'A', 4: ' ', 5: 'S', 6: 'I', 7: 'U',
         8: '\r', 9: 'D', 10: 'R', 11: 'J', 12: 'N', 13: 'F', 14: 'C', 15: 'K',
@@ -265,7 +260,7 @@
             
             const source = audioCtx.createMediaStreamSource(micStream);
             analyser = audioCtx.createAnalyser();
-            analyser.fftSize = 2048;
+            analyser.fftSize = 4096; // Higher resolution for 50Hz tone discrimination
             source.connect(analyser);
 
             if (audioCtx.state === 'suspended') {
@@ -274,7 +269,7 @@
 
             document.getElementById('connection-status').textContent = 'AUDIO ACTIVE';
             document.getElementById('connection-status').classList.add('active');
-            logInfo("[SYS] Audio initialized. Dynamic LBT active.");
+            logInfo("[SYS] 9-Tone Audio Engine Active. Carrier Lock Enabled.");
             
             startReceiverLoop();
         } catch (err) {
@@ -282,18 +277,18 @@
         }
     }
 
-    function getNextClearChannel() {
+    function getNextClearSubfrequency() {
         let now = Date.now();
         let attempts = 0;
-        while (attempts < NUM_CHANNELS) {
-            if (now - channelLastHeard[currentWorkingChannel] > 5000) {
-                return currentWorkingChannel;
+        while (attempts < NUM_SUBFREQS) {
+            if (now - subfreqLastHeard[currentWorkingSubfreq] > 5000) {
+                return currentWorkingSubfreq;
             }
-            logInfo(`[LBT] Channel ${currentWorkingChannel} busy (<5s). Rotating to chan+1...`);
-            currentWorkingChannel = (currentWorkingChannel + 1) % NUM_CHANNELS;
+            logInfo(`[LBT] Subfreq Slot ${currentWorkingSubfreq} busy. Rotating...`);
+            currentWorkingSubfreq = (currentWorkingSubfreq + 1) % NUM_SUBFREQS;
             attempts++;
         }
-        return currentWorkingChannel;
+        return currentWorkingSubfreq;
     }
 
     async function transmitMessage() {
@@ -305,44 +300,55 @@
         if (!text) return;
         document.getElementById('tx-input').value = '';
 
-        let activeTxBaseChannel = getNextClearChannel();
-        logInfo(`[TX] Active Base Channel: CH ${activeTxBaseChannel}`);
+        let subfreqSlot = getNextClearSubfrequency();
+        let channelBaseFreq = BASE_FREQ + (subfreqSlot * SUBFREQ_BANDWIDTH);
+
+        logInfo(`[TX] Subfreq Slot ${subfreqSlot} (${channelBaseFreq} Hz Anchor)`);
         logTraffic("[TX] " + text.toUpperCase());
 
         let ita2Codes = encodeITA2(text);
-        let symbols = [];
+        
+        // Build sequence: Tone 0 carrier preamble (2 symbols) + data symbols (Tones 1-8)
+        let toneSequence = [0, 0]; 
 
         ita2Codes.forEach(code => {
-            let sym1 = (code >> 2) & 0x07;
-            let sym2 = code & 0x03;
-            symbols.push((sym1 + activeTxBaseChannel) % NUM_CHANNELS);
-            symbols.push((sym2 + activeTxBaseChannel) % NUM_CHANNELS);
+            let sym1 = ((code >> 2) & 0x07) + 1; // Map to data tones 1..8
+            let sym2 = (code & 0x03) + 1;
+            toneSequence.push(sym1, sym2);
         });
 
         let startTime = audioCtx.currentTime + 0.1;
-        symbols.forEach((sym, index) => {
-            let freq = BASE_FREQ + (sym * CHANNEL_WIDTH) + (CHANNEL_WIDTH / 2);
+        
+        // Continuous Phase-Continuous Oscillator for FT8 sound characteristics
+        let osc = audioCtx.createOscillator();
+        let gain = audioCtx.createGain();
+
+        osc.type = 'sine';
+
+        toneSequence.forEach((toneIdx, index) => {
+            let freq = channelBaseFreq + (toneIdx * TONE_SPACING);
             let t = startTime + (index * SYMBOL_DURATION);
 
-            let osc = audioCtx.createOscillator();
-            let gain = audioCtx.createGain();
-
-            osc.type = 'sine';
-            osc.frequency.setValueAtTime(freq, t);
-
-            gain.gain.setValueAtTime(0, t);
-            gain.gain.linearRampToValueAtTime(0.7, t + RAMP_TIME);
-            gain.gain.setValueAtTime(0.7, t + SYMBOL_DURATION - RAMP_TIME);
-            gain.gain.linearRampToValueAtTime(0, t + SYMBOL_DURATION);
-
-            osc.connect(gain);
-            gain.connect(audioCtx.destination);
-
-            osc.start(t);
-            osc.stop(t + SYMBOL_DURATION);
+            if (index === 0) {
+                osc.frequency.setValueAtTime(freq, t);
+            } else {
+                osc.frequency.linearRampToValueAtTime(freq, t);
+            }
         });
 
-        currentWorkingChannel = (currentWorkingChannel + 1) % NUM_CHANNELS;
+        let totalDuration = toneSequence.length * SYMBOL_DURATION;
+        gain.gain.setValueAtTime(0, startTime);
+        gain.gain.linearRampToValueAtTime(0.7, startTime + RAMP_TIME);
+        gain.gain.setValueAtTime(0.7, startTime + totalDuration - RAMP_TIME);
+        gain.gain.linearRampToValueAtTime(0, startTime + totalDuration);
+
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+
+        osc.start(startTime);
+        osc.stop(startTime + totalDuration);
+
+        currentWorkingSubfreq = (currentWorkingSubfreq + 1) % NUM_SUBFREQS;
     }
 
     function startReceiverLoop() {
@@ -361,42 +367,47 @@
             const isLight = document.body.getAttribute('data-theme') === 'light';
             canvasCtx.fillStyle = isLight ? '#f5f8f5' : '#000000';
             canvasCtx.fillRect(0, 0, canvas.width, canvas.height);
-            let barWidth = canvas.width / NUM_CHANNELS;
             
-            let maxBinVal = 0;
-            let dominantChannel = -1;
+            let maxVal = 0;
+            let detectedFreq = 0;
 
-            for (let i = 0; i < NUM_CHANNELS; i++) {
-                let targetFreq = BASE_FREQ + (i * CHANNEL_WIDTH) + (CHANNEL_WIDTH / 2);
-                let binIndex = Math.round(targetFreq / (audioCtx.sampleRate / analyser.fftSize));
-                let val = dataArray[binIndex] || 0;
-
-                if (val > 80) channelLastHeard[i] = Date.now();
-
-                if (val > maxBinVal) {
-                    maxBinVal = val;
-                    dominantChannel = i;
+            // Scan total passband
+            for (let f = BASE_FREQ; f < BASE_FREQ + (NUM_SUBFREQS * SUBFREQ_BANDWIDTH); f += 25) {
+                let bin = Math.round(f / (audioCtx.sampleRate / analyser.fftSize));
+                let v = dataArray[bin] || 0;
+                if (v > maxVal) {
+                    maxVal = v;
+                    detectedFreq = f;
                 }
-                
-                if (val > 120) {
-                    canvasCtx.fillStyle = isLight ? '#007a33' : '#00ff66';
-                } else {
-                    canvasCtx.fillStyle = isLight ? '#c0d0c0' : '#113311';
+            }
+
+            // Draw Spectrum Bars across subfrequency bands
+            let barWidth = canvas.width / (NUM_SUBFREQS * TONES_PER_CHANNEL);
+            for (let s = 0; s < NUM_SUBFREQS; s++) {
+                for (let t = 0; t < TONES_PER_CHANNEL; t++) {
+                    let f = BASE_FREQ + (s * SUBFREQ_BANDWIDTH) + (t * TONE_SPACING);
+                    let bin = Math.round(f / (audioCtx.sampleRate / analyser.fftSize));
+                    let val = dataArray[bin] || 0;
+                    
+                    if (val > 80) subfreqLastHeard[s] = Date.now();
+
+                    let x = (s * TONES_PER_CHANNEL + t) * barWidth;
+                    canvasCtx.fillStyle = val > 120 ? (isLight ? '#007a33' : '#00ff66') : (isLight ? '#c0d0c0' : '#113311');
+                    canvasCtx.fillRect(x, canvas.height - (val / 255) * canvas.height, barWidth - 1, (val / 255) * canvas.height);
                 }
-                canvasCtx.fillRect(i * barWidth, canvas.height - (val / 255) * canvas.height, barWidth - 2, (val / 255) * canvas.height);
             }
 
             if (!isReceiving) {
-                if (maxBinVal > SQUELCH_ENERGY_LIMIT) {
+                if (maxVal > SQUELCH_ENERGY_LIMIT) {
                     isReceiving = true;
                     symbolBuffer = [];
                     silenceFrames = 0;
-                    logInfo("[RX] Squelch Open (CH " + dominantChannel + ")");
+                    logInfo(`[RX] Squelch Open @ ~${detectedFreq} Hz`);
                 }
             } else {
-                if (maxBinVal > SQUELCH_ENERGY_LIMIT) {
+                if (maxVal > SQUELCH_ENERGY_LIMIT) {
                     silenceFrames = 0;
-                    symbolBuffer.push(dominantChannel);
+                    symbolBuffer.push(detectedFreq);
                 } else {
                     silenceFrames++;
                     if (silenceFrames > SILENCE_THRESHOLD_FRAMES) {
@@ -411,21 +422,31 @@
         loop();
     }
 
-    function processPacketBuffer(symbols) {
-        if (symbols.length < 2 || symbols.length % 2 !== 0) {
-            logInfo("[ERR] Invalid symbol count (" + symbols.length + ")");
+    function processPacketBuffer(rawFreqs) {
+        if (rawFreqs.length < 4) {
+            logInfo("[ERR] Burst too short to decode.");
             return;
         }
 
-        logInfo("[RX] Parsing " + symbols.length + " symbols...");
-        let baseCh = symbols[0];
-        let unshift = (val, base) => (val - base + NUM_CHANNELS) % NUM_CHANNELS;
+        // Lock onto Tone 0 Anchor (first received frequency)
+        let carrierFreq = rawFreqs[0];
+        logInfo(`[RX] Carrier Lock: ${carrierFreq} Hz. Parsing ${rawFreqs.length} symbols...`);
 
         let ita2Codes = [];
-        for (let i = 0; i < symbols.length; i += 2) {
-            let s1 = unshift(symbols[i], baseCh);
-            let s2 = unshift(symbols[i+1], baseCh);
-            let code = (s1 << 2) | s2;
+        let dataTones = [];
+
+        // Map raw frequencies to Tone 1-8 positions relative to Tone 0 Carrier
+        for (let i = 2; i < rawFreqs.length; i++) {
+            let toneOffset = Math.round((rawFreqs[i] - carrierFreq) / TONE_SPACING);
+            if (toneOffset >= 1 && toneOffset <= 8) {
+                dataTones.push(toneOffset - 1); // Normalize to 0..7 3-bit value
+            }
+        }
+
+        for (let i = 0; i < dataTones.length - 1; i += 2) {
+            let s1 = dataTones[i];
+            let s2 = dataTones[i+1];
+            let code = (s1 << 2) | (s2 & 0x03);
             ita2Codes.push(code);
         }
 
