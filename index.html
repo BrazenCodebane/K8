@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>K8-1 Kate - Dual-Carrier MFSK Terminal [Silent PTT Lead-In]</title>
+    <title>K8-1 Kate - Dual-Carrier MFSK Terminal [Configurable Callsign]</title>
     <style>
         :root {
             --bg-color: #0b0f12;
@@ -36,9 +36,9 @@
         header { background: var(--panel-bg); border-bottom: 2px solid var(--border-color); padding: 8px 16px; display: flex; justify-content: space-between; align-items: center; }
         h1 { font-size: 1.1rem; color: var(--accent-green); letter-spacing: 2px; text-transform: uppercase; }
         
-        .header-controls { display: flex; align-items: center; gap: 10px; }
-        .theme-toggle-btn { background: var(--btn-bg); border: 1px solid var(--border-color); color: var(--text-main); padding: 2px 8px; font-size: 0.75rem; cursor: pointer; text-transform: uppercase; font-weight: bold; }
-        .theme-toggle-btn:hover { border-color: var(--accent-green); }
+        .header-controls { display: flex; align-items: center; gap: 8px; }
+        .theme-toggle-btn, .settings-btn { background: var(--btn-bg); border: 1px solid var(--border-color); color: var(--text-main); padding: 2px 8px; font-size: 0.75rem; cursor: pointer; text-transform: uppercase; font-weight: bold; }
+        .theme-toggle-btn:hover, .settings-btn:hover { border-color: var(--accent-green); }
 
         .status-badge { font-size: 0.8rem; padding: 2px 8px; border: 1px solid var(--border-color); background: var(--log-bg); }
         .active { color: var(--accent-green); border-color: var(--accent-green); box-shadow: 0 0 8px var(--accent-dim); }
@@ -87,22 +87,47 @@
         .metric-value { font-size: 1rem; color: var(--accent-green); font-weight: bold; }
         .metric-label { font-size: 0.7rem; color: var(--info-text); }
         #waterfall { width: 100%; height: 100px; background: var(--log-bg); border: 1px solid var(--border-color); margin-top: 4px; flex-shrink: 0; }
+
+        /* Settings Modal Overlay */
+        #settings-modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 100; justify-content: center; align-items: center; }
+        .modal-content { background: var(--panel-bg); border: 2px solid var(--warning-amber); padding: 20px; width: 320px; border-radius: 4px; }
+        .modal-title { font-size: 0.95rem; font-weight: bold; color: var(--warning-amber); margin-bottom: 12px; text-transform: uppercase; border-bottom: 1px dashed var(--border-color); padding-bottom: 6px; }
+        .modal-field { margin-bottom: 12px; }
+        .modal-field label { display: block; font-size: 0.75rem; color: var(--info-text); margin-bottom: 4px; text-transform: uppercase; }
+        .modal-field input { width: 100%; background: var(--log-bg); border: 1px solid var(--border-color); color: var(--accent-green); padding: 6px; font-size: 0.9rem; text-transform: uppercase; }
+        .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
     </style>
 </head>
 <body>
 
 <header>
-    <h1>K8-1 Kate // Silent PTT Lead-In Terminal</h1>
+    <h1 id="header-title">K8-1 Kate // Tactical Terminal</h1>
     <div class="header-controls">
+        <button class="settings-btn" onclick="openSettings()">[ ⚙ CONFIG ]</button>
         <button id="theme-toggle" class="theme-toggle-btn" onclick="toggleTheme()">[ ☀ LIGHT ]</button>
         <div id="connection-status" class="status-badge">AUDIO OFFLINE</div>
     </div>
 </header>
 
+<!-- Settings Modal -->
+<div id="settings-modal">
+    <div class="modal-content">
+        <div class="modal-title">Terminal Station Config</div>
+        <div class="modal-field">
+            <label for="callsign-input">Operator Callsign</label>
+            <input type="text" id="callsign-input" placeholder="e.g. KJ5NOV" autocomplete="off">
+        </div>
+        <div class="modal-actions">
+            <button onclick="closeSettings()">Cancel</button>
+            <button onclick="saveSettings()" style="background: var(--accent-green); color: #000;">Save</button>
+        </div>
+    </div>
+</div>
+
 <div class="main-container">
     <div class="panel">
         <div class="panel-title">Tactical Message Traffic (ITA2)</div>
-        <div id="traffic-log">[SYS] Terminal ready. Silent PTT Lead-In active.</div>
+        <div id="traffic-log">[SYS] Terminal ready. Callsign auto-injection active.</div>
         <div class="input-row">
             <input type="text" id="tx-input" placeholder="Enter tactical message..." autocomplete="off">
             <button onclick="transmitMessage()">Transmit</button>
@@ -113,11 +138,11 @@
         <div class="panel-title">Link Telemetry</div>
         <div class="controls-grid">
             <div class="metric-box">
-                <div id="m-baud" class="metric-value">6.25</div>
+                <div id="m-baud" class="metric-value">10.0</div>
                 <div class="metric-label">Baud Rate</div>
             </div>
             <div class="metric-box">
-                <div id="m-mode" class="metric-value">PTT-ITA2</div>
+                <div id="m-mode" class="metric-value">2X-ITA2</div>
                 <div class="metric-label">Codec</div>
             </div>
         </div>
@@ -131,6 +156,35 @@
 </div>
 
 <script>
+    // --- CALLSIGN CONFIGURATION MANAGEMENT ---
+    let operatorCallsign = localStorage.getItem('k81_callsign') || 'KJ5NOV';
+
+    function updateCallsignUI() {
+        document.getElementById('header-title').textContent = `K8-1 Kate // ${operatorCallsign} Terminal`;
+    }
+    updateCallsignUI();
+
+    function openSettings() {
+        document.getElementById('callsign-input').value = operatorCallsign;
+        document.getElementById('settings-modal').style.display = 'flex';
+    }
+
+    function closeSettings() {
+        document.getElementById('settings-modal').style.display = 'none';
+    }
+
+    function saveSettings() {
+        const val = document.getElementById('callsign-input').value.trim().toUpperCase();
+        if (val) {
+            operatorCallsign = val;
+            localStorage.setItem('k81_callsign', operatorCallsign);
+            updateCallsignUI();
+            logInfo(`[SYS] Callsign updated to: ${operatorCallsign}`);
+        }
+        closeSettings();
+    }
+
+    // --- THEME MANAGEMENT ---
     function toggleTheme() {
         const currentTheme = document.body.getAttribute('data-theme');
         const newTheme = currentTheme === 'light' ? 'dark' : 'light';
@@ -158,10 +212,11 @@
     const NUM_SUBFREQS = 4;
     const TONES_PER_SUBFREQ = 10;
 
-    const SYMBOL_DURATION = 0.16;
-    const PTT_LEAD_IN_SILENCE = 1.0; // 1 second silent audio buffer for radio PTT stabilization
-    const SUBFREQ_SYNC_DURATION = 0.5;     
-    const RAMP_TIME = 0.010;
+    const SYMBOL_DURATION = 0.10; 
+    const PTT_LEAD_IN_SILENCE = 1.0; 
+    const SUBFREQ_SYNC_DURATION = 0.2;     
+    const RAMP_TIME = 0.002;
+    const OVERLOAD_GAIN = 0.98;
 
     let audioCtx = null;
     let analyser = null;
@@ -269,7 +324,7 @@
 
             document.getElementById('connection-status').textContent = 'AUDIO ACTIVE';
             document.getElementById('connection-status').classList.add('active');
-            logInfo("[SYS] Audio Active. Silent PTT Lead-In Engine Engaged.");
+            logInfo(`[SYS] Audio Active. Station ${operatorCallsign} Engaged.`);
             
             startReceiverLoop();
         } catch (err) {
@@ -296,40 +351,46 @@
             alert("Initialize audio engine first!");
             return;
         }
-        const text = document.getElementById('tx-input').value;
-        if (!text) return;
+        let rawText = document.getElementById('tx-input').value.trim();
+        if (!rawText) return;
         document.getElementById('tx-input').value = '';
+
+        // Prepend configured callsign automatically
+        let prependedText = `${operatorCallsign} ${rawText}`;
 
         let subfreqSlot = getNextClearSubfrequency();
         let subfreqAnchorFreq = 600 + (subfreqSlot * SUBFREQ_BANDWIDTH);
 
-        logInfo(`[TX] Slot ${subfreqSlot} | 1.0s Silent PTT Lead-In -> Anchor (${subfreqAnchorFreq}Hz)`);
-        logTraffic("[TX] " + text.toUpperCase());
+        logInfo(`[TX] Slot ${subfreqSlot} | 2X Burst | Anchor (${subfreqAnchorFreq}Hz)`);
+        logTraffic("[TX] " + prependedText.toUpperCase());
 
-        let ita2Codes = encodeITA2(text);
-        let dataSymbols = [];
+        let ita2Codes = encodeITA2(prependedText);
+        let singleBurstSymbols = [];
 
         ita2Codes.forEach(code => {
-            let sym1 = ((code >> 2) & 0x07) + 1; // Data tones map to index 1..8
+            let sym1 = ((code >> 2) & 0x07) + 1; 
             let sym2 = (code & 0x03) + 1;
-            dataSymbols.push(sym1, sym2);
+            singleBurstSymbols.push(sym1, sym2);
         });
+
+        // Dual-burst redundancy (send twice)
+        let dataSymbols = [...singleBurstSymbols, ...singleBurstSymbols];
 
         let startTime = audioCtx.currentTime + 0.1;
         let osc = audioCtx.createOscillator();
         let gain = audioCtx.createGain();
         osc.type = 'sine';
 
-        // --- PHASE 1: Silent PTT Lead-In (1.0s with Gain = 0) ---
+        // --- PHASE 1: Silent PTT Lead-In (1.0s) ---
         osc.frequency.setValueAtTime(subfreqAnchorFreq, startTime);
         gain.gain.setValueAtTime(0, startTime);
         gain.gain.setValueAtTime(0, startTime + PTT_LEAD_IN_SILENCE);
 
-        // --- PHASE 2: Subfrequency Channel Anchor Lock (0.3s audio ramp up) ---
+        // --- PHASE 2: Subfrequency Channel Anchor Lock ---
         let subfreqStartTime = startTime + PTT_LEAD_IN_SILENCE;
-        gain.gain.linearRampToValueAtTime(0.7, subfreqStartTime + RAMP_TIME);
+        gain.gain.linearRampToValueAtTime(OVERLOAD_GAIN, subfreqStartTime + RAMP_TIME);
 
-        // --- PHASE 3: Continuous Phase MFSK Data Symbols ---
+        // --- PHASE 3: Double-Length Continuous Phase Data Symbols ---
         let dataStartTime = subfreqStartTime + SUBFREQ_SYNC_DURATION;
         dataSymbols.forEach((toneIdx, index) => {
             let freq = subfreqAnchorFreq + (toneIdx * TONE_SPACING);
@@ -339,7 +400,7 @@
 
         let totalDuration = PTT_LEAD_IN_SILENCE + SUBFREQ_SYNC_DURATION + (dataSymbols.length * SYMBOL_DURATION);
         
-        gain.gain.setValueAtTime(0.7, startTime + totalDuration - RAMP_TIME);
+        gain.gain.setValueAtTime(OVERLOAD_GAIN, startTime + totalDuration - RAMP_TIME);
         gain.gain.linearRampToValueAtTime(0, startTime + totalDuration);
 
         osc.connect(gain);
@@ -429,7 +490,6 @@
 
         logInfo(`[RX] Processing burst of ${rawFreqs.length} frames...`);
 
-        // First detected frequency in burst is our Subfrequency Anchor
         let subfreqAnchor = rawFreqs[0];
         logInfo(`[RX] Subfreq Anchor Locked: ${subfreqAnchor} Hz. Decoding data...`);
 
@@ -437,7 +497,7 @@
         for (let i = 1; i < rawFreqs.length; i++) {
             let toneOffset = Math.round((rawFreqs[i] - subfreqAnchor) / TONE_SPACING);
             if (toneOffset >= 1 && toneOffset <= 8) {
-                dataTones.push(toneOffset - 1); // Normalize to 0..7 3-bit value
+                dataTones.push(toneOffset - 1); 
             }
         }
 
