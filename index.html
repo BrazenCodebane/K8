@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>K8-1 Kate - 9-Tone MFSK Terminal</title>
+    <title>K8-1 Kate - Dual-Carrier MFSK Terminal</title>
     <style>
         :root {
             --bg-color: #0b0f12;
@@ -92,7 +92,7 @@
 <body>
 
 <header>
-    <h1>K8-1 Kate // 9-Tone MFSK Terminal</h1>
+    <h1>K8-1 Kate // Dual-Carrier MFSK Terminal</h1>
     <div class="header-controls">
         <button id="theme-toggle" class="theme-toggle-btn" onclick="toggleTheme()">[ ☀ LIGHT ]</button>
         <div id="connection-status" class="status-badge">AUDIO OFFLINE</div>
@@ -102,7 +102,7 @@
 <div class="main-container">
     <div class="panel">
         <div class="panel-title">Tactical Message Traffic (ITA2)</div>
-        <div id="traffic-log">[SYS] Terminal ready. 9-Tone Carrier Sync Architecture active.</div>
+        <div id="traffic-log">[SYS] Terminal ready. Dual-Carrier architecture active.</div>
         <div class="input-row">
             <input type="text" id="tx-input" placeholder="Enter tactical message..." autocomplete="off">
             <button onclick="transmitMessage()">Transmit</button>
@@ -117,7 +117,7 @@
                 <div class="metric-label">Baud Rate</div>
             </div>
             <div class="metric-box">
-                <div id="m-mode" class="metric-value">9T-ITA2</div>
+                <div id="m-mode" class="metric-value">2C-ITA2</div>
                 <div class="metric-label">Codec</div>
             </div>
         </div>
@@ -152,15 +152,16 @@
     const savedTheme = localStorage.getItem('k81_theme');
     if (savedTheme === 'light') applyTheme('light');
 
-    // --- ARCHITECTURE DEFINITIONS ---
-    // Subfrequency band: 500 Hz total width per Channel (9 tones @ 50 Hz spacing + guard)
-    const BASE_FREQ = 500;
+    // --- DUAL-CARRIER ARCHITECTURE DEFINITIONS ---
+    const REPEATER_CARRIER_FREQ = 500; // Tone 0: Repeater PTT Key-Up Carrier
     const TONE_SPACING = 50; 
-    const TONES_PER_CHANNEL = 9; // Tone 0 = Carrier, Tones 1-8 = Data
-    const SUBFREQ_BANDWIDTH = 500;
-    const NUM_SUBFREQS = 4; // 4 clear channel slots within 500-2500 Hz passband
+    const SUBFREQ_BANDWIDTH = 500;     // Total width per subfrequency block
+    const NUM_SUBFREQS = 4;            // 4 tactical subfrequency slots
+    const TONES_PER_SUBFREQ = 10;      // [0]=Repeater Carrier, [1]=Subfreq Anchor, [2..9]=8 Data Tones
 
-    const SYMBOL_DURATION = 0.16; // ~6.25 Baud FT8 cadence
+    const SYMBOL_DURATION = 0.16;
+    const REPEATER_LEAD_IN_DURATION = 1.0; // 1 second repeater PTT hold
+    const SUBFREQ_SYNC_DURATION = 0.3;     // 300ms subfrequency slot lock
     const RAMP_TIME = 0.010;
 
     let audioCtx = null;
@@ -260,7 +261,7 @@
             
             const source = audioCtx.createMediaStreamSource(micStream);
             analyser = audioCtx.createAnalyser();
-            analyser.fftSize = 4096; // Higher resolution for 50Hz tone discrimination
+            analyser.fftSize = 4096;
             source.connect(analyser);
 
             if (audioCtx.state === 'suspended') {
@@ -269,7 +270,7 @@
 
             document.getElementById('connection-status').textContent = 'AUDIO ACTIVE';
             document.getElementById('connection-status').classList.add('active');
-            logInfo("[SYS] 9-Tone Audio Engine Active. Carrier Lock Enabled.");
+            logInfo("[SYS] Audio Active. Dual-Carrier Engine Engaged.");
             
             startReceiverLoop();
         } catch (err) {
@@ -301,42 +302,43 @@
         document.getElementById('tx-input').value = '';
 
         let subfreqSlot = getNextClearSubfrequency();
-        let channelBaseFreq = BASE_FREQ + (subfreqSlot * SUBFREQ_BANDWIDTH);
+        // Calculate subfrequency base anchor (starting above repeater carrier)
+        let subfreqAnchorFreq = REPEATER_CARRIER_FREQ + 100 + (subfreqSlot * SUBFREQ_BANDWIDTH);
 
-        logInfo(`[TX] Subfreq Slot ${subfreqSlot} (${channelBaseFreq} Hz Anchor)`);
+        logInfo(`[TX] Slot ${subfreqSlot} | Repeater Carrier (500Hz) + Subfreq Anchor (${subfreqAnchorFreq}Hz)`);
         logTraffic("[TX] " + text.toUpperCase());
 
         let ita2Codes = encodeITA2(text);
-        
-        // Build sequence: Tone 0 carrier preamble (2 symbols) + data symbols (Tones 1-8)
-        let toneSequence = [0, 0]; 
+        let dataSymbols = [];
 
         ita2Codes.forEach(code => {
-            let sym1 = ((code >> 2) & 0x07) + 1; // Map to data tones 1..8
-            let sym2 = (code & 0x03) + 1;
-            toneSequence.push(sym1, sym2);
+            let sym1 = ((code >> 2) & 0x07) + 2; // Data tones map to index 2..9
+            let sym2 = (code & 0x03) + 2;
+            dataSymbols.push(sym1, sym2);
         });
 
         let startTime = audioCtx.currentTime + 0.1;
-        
-        // Continuous Phase-Continuous Oscillator for FT8 sound characteristics
         let osc = audioCtx.createOscillator();
         let gain = audioCtx.createGain();
-
         osc.type = 'sine';
 
-        toneSequence.forEach((toneIdx, index) => {
-            let freq = channelBaseFreq + (toneIdx * TONE_SPACING);
-            let t = startTime + (index * SYMBOL_DURATION);
+        // --- PHASE 1: Repeater Carrier Lead-In (1.0s at 500 Hz) ---
+        osc.frequency.setValueAtTime(REPEATER_CARRIER_FREQ, startTime);
 
-            if (index === 0) {
-                osc.frequency.setValueAtTime(freq, t);
-            } else {
-                osc.frequency.linearRampToValueAtTime(freq, t);
-            }
+        // --- PHASE 2: Subfrequency Channel Anchor Lock (0.3s at subfreq anchor) ---
+        let subfreqStartTime = startTime + REPEATER_LEAD_IN_DURATION;
+        osc.frequency.linearRampToValueAtTime(subfreqAnchorFreq, subfreqStartTime);
+
+        // --- PHASE 3: Continuous Phase MFSK Data Symbols (Tones 2-9) ---
+        let dataStartTime = subfreqStartTime + SUBFREQ_SYNC_DURATION;
+        dataSymbols.forEach((toneIdx, index) => {
+            let freq = subfreqAnchorFreq + (toneIdx * TONE_SPACING);
+            let t = dataStartTime + (index * SYMBOL_DURATION);
+            osc.frequency.linearRampToValueAtTime(freq, t);
         });
 
-        let totalDuration = toneSequence.length * SYMBOL_DURATION;
+        let totalDuration = REPEATER_LEAD_IN_DURATION + SUBFREQ_SYNC_DURATION + (dataSymbols.length * SYMBOL_DURATION);
+        
         gain.gain.setValueAtTime(0, startTime);
         gain.gain.linearRampToValueAtTime(0.7, startTime + RAMP_TIME);
         gain.gain.setValueAtTime(0.7, startTime + totalDuration - RAMP_TIME);
@@ -371,8 +373,7 @@
             let maxVal = 0;
             let detectedFreq = 0;
 
-            // Scan total passband
-            for (let f = BASE_FREQ; f < BASE_FREQ + (NUM_SUBFREQS * SUBFREQ_BANDWIDTH); f += 25) {
+            for (let f = 400; f < 3000; f += 25) {
                 let bin = Math.round(f / (audioCtx.sampleRate / analyser.fftSize));
                 let v = dataArray[bin] || 0;
                 if (v > maxVal) {
@@ -381,17 +382,18 @@
                 }
             }
 
-            // Draw Spectrum Bars across subfrequency bands
-            let barWidth = canvas.width / (NUM_SUBFREQS * TONES_PER_CHANNEL);
+            // Draw Spectrum Bars
+            let barWidth = canvas.width / (NUM_SUBFREQS * TONES_PER_SUBFREQ);
             for (let s = 0; s < NUM_SUBFREQS; s++) {
-                for (let t = 0; t < TONES_PER_CHANNEL; t++) {
-                    let f = BASE_FREQ + (s * SUBFREQ_BANDWIDTH) + (t * TONE_SPACING);
+                let slotBase = REPEATER_CARRIER_FREQ + 100 + (s * SUBFREQ_BANDWIDTH);
+                for (let t = 0; t < TONES_PER_SUBFREQ; t++) {
+                    let f = slotBase + (t * TONE_SPACING);
                     let bin = Math.round(f / (audioCtx.sampleRate / analyser.fftSize));
                     let val = dataArray[bin] || 0;
                     
-                    if (val > 80) subfreqLastHeard[s] = Date.now();
+                    if (val > 80 && t > 1) subfreqLastHeard[s] = Date.now();
 
-                    let x = (s * TONES_PER_CHANNEL + t) * barWidth;
+                    let x = (s * TONES_PER_SUBFREQ + t) * barWidth;
                     canvasCtx.fillStyle = val > 120 ? (isLight ? '#007a33' : '#00ff66') : (isLight ? '#c0d0c0' : '#113311');
                     canvasCtx.fillRect(x, canvas.height - (val / 255) * canvas.height, barWidth - 1, (val / 255) * canvas.height);
                 }
@@ -423,26 +425,47 @@
     }
 
     function processPacketBuffer(rawFreqs) {
-        if (rawFreqs.length < 4) {
+        if (rawFreqs.length < 5) {
             logInfo("[ERR] Burst too short to decode.");
             return;
         }
 
-        // Lock onto Tone 0 Anchor (first received frequency)
-        let carrierFreq = rawFreqs[0];
-        logInfo(`[RX] Carrier Lock: ${carrierFreq} Hz. Parsing ${rawFreqs.length} symbols...`);
+        logInfo(`[RX] Processing burst of ${rawFreqs.length} frames...`);
 
-        let ita2Codes = [];
-        let dataTones = [];
+        // 1. Verify Repeater Carrier (Tone 0 ~ 500 Hz)
+        let repeaterCarrier = rawFreqs[0];
+        logInfo(`[RX] Repeater Carrier Locked: ~${repeaterCarrier} Hz`);
 
-        // Map raw frequencies to Tone 1-8 positions relative to Tone 0 Carrier
-        for (let i = 2; i < rawFreqs.length; i++) {
-            let toneOffset = Math.round((rawFreqs[i] - carrierFreq) / TONE_SPACING);
-            if (toneOffset >= 1 && toneOffset <= 8) {
-                dataTones.push(toneOffset - 1); // Normalize to 0..7 3-bit value
+        // 2. Find Subfrequency Anchor (Tone 1) in the sequence
+        let subfreqAnchor = 0;
+        let dataStartIndex = 0;
+
+        for (let i = 1; i < rawFreqs.length; i++) {
+            // Check if frequency is offset from repeater carrier into our subfrequency blocks
+            let diff = rawFreqs[i] - REPEATER_CARRIER_FREQ;
+            if (diff > 50) {
+                subfreqAnchor = rawFreqs[i];
+                dataStartIndex = i + 1; // Data tones follow the subfrequency anchor
+                break;
             }
         }
 
+        if (subfreqAnchor === 0 || dataStartIndex >= rawFreqs.length) {
+            logInfo("[ERR] Subfrequency anchor lock failed.");
+            return;
+        }
+
+        logInfo(`[RX] Subfreq Anchor Locked: ${subfreqAnchor} Hz. Decoding data...`);
+
+        let dataTones = [];
+        for (let i = dataStartIndex; i < rawFreqs.length; i++) {
+            let toneOffset = Math.round((rawFreqs[i] - subfreqAnchor) / TONE_SPACING);
+            if (toneOffset >= 2 && toneOffset <= 9) {
+                dataTones.push(toneOffset - 2); // Normalize to 0..7 3-bit value
+            }
+        }
+
+        let ita2Codes = [];
         for (let i = 0; i < dataTones.length - 1; i += 2) {
             let s1 = dataTones[i];
             let s2 = dataTones[i+1];
